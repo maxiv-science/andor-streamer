@@ -54,6 +54,18 @@ ffi.cdef('''
     int AT_Flush(AT_H Hndl);
     ''')
 
+AT_SUCCESS = 0
+
+errors = {
+    1: 'AT_ERR_NOTINITIALISED',
+    2: 'AT_ERR_NOTIMPLEMENTED',
+    3: 'AT_ERR_READONLY',
+    4: 'AT_ERR_NOTREADABLE',
+    5: 'AT_ERR_NOTWRITABLE',
+    6: 'AT_ERR_OUTOFRANGE',
+    13: 'AT_ERR_TIMEDOUT'
+}
+
 #sdk = ffi.dlopen('/opt/andor/sdk3/lib/libatcore.so')
 sdk = ffi.dlopen('libatcore.so')
 AT_HANDLE_SYSTEM = 1
@@ -140,13 +152,21 @@ def is_implemented(handle, feature):
 def wait_buffer(handle, timeout=0):
     buf_ptr = ffi.new('AT_U8**')
     buffer_size = ffi.new('int*')
-    check_error(sdk.AT_WaitBuffer(handle, buf_ptr, buffer_size, timeout))
-    return (buf_ptr[0], buffer_size[0])
+    ret = sdk.AT_WaitBuffer(handle, buf_ptr, buffer_size, timeout)
+    if ret == AT_SUCCESS:
+        return (buf_ptr[0], buffer_size[0])
+    #elif ret == AT_ERR_TIMEDOUT:
+    #    return None
+    else:
+        return None
+    #else:
+    #    raise RuntimeError('Error in calling wait_buffer %d' %ret)
 
  
 ### Start ### 
 # bsp02-o-ctl-ioc-01 zyla at femtomax
- 
+# b303a-a100380-cab01-dia-detpicu-02 nanomax 
+'''
 check_error(sdk.AT_InitialiseLibrary())
 
 devcount = get_int(AT_HANDLE_SYSTEM, 'DeviceCount')
@@ -253,3 +273,4 @@ check_error(sdk.AT_Flush(handle))
 
 check_error(sdk.AT_Close(handle))
 check_error(sdk.AT_FinaliseLibrary())
+'''
