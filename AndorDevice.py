@@ -1,6 +1,7 @@
 import os
 import zmq
 import andor 
+import atutility
 import weakref
 import tango
 import numpy as np
@@ -22,11 +23,21 @@ class Andor3Device(Device):
         self.context = zmq.Context()
         self.pipe = self.context.socket(zmq.PAIR)
         self.pipe.bind('inproc://zyla')
-        self.data_socket = self.context.socket(zmq.PUB)
+        self.data_socket = self.context.socket(zmq.PUSH)
         self.data_socket.bind('tcp://*:9999')
+        self.monitor_socket = self.context.socket(zmq.REP)
+        self.monitor_socket.bind('tcp://*:9998')
         self._filename = ''
         self._frame_count = 1
+        self._acquired_frames = 0
+        # -1 is error, 0 is idle and 1 is running
+        self._running = 0
+        self._fliplr = False
+        self._flipud = False
+        self._rotation = 0
         
+        atutility.sdk.AT_InitialiseUtilityLibrary()
+        andor.set_enum_string(self.handle, 'SimplePreAmpGainControl', '16-bit (low noise & high well capacity)')
         andor.set_enum_string(self.handle, 'TriggerMode', 'Internal')
         andor.set_enum_string(self.handle, 'CycleMode', 'Fixed')
 
@@ -37,21 +48,44 @@ class Andor3Device(Device):
             buf = np.empty(image_size, np.uint8)
             self.buffers.append(buf)
             
-        height = andor.get_int(self.handle, 'AOIHeight')
-        width = andor.get_int(self.handle, 'AOIWidth')
-        stride = andor.get_int(self.handle, 'AOIStride')
-        print(height, width, stride)
-        
         self.thread = Thread(target=self.main)
         self.thread.start()
         
     def init_device(self):
-        self.set_change_event('state', True, False)
         self.set_state(DevState.ON)
         
+    def get_state(self):
+        print('get state')
+        if self._running == 0:
+            return DevState.ON
+        elif self._running == 1:
+            return DevState.RUNNING
+        else:
+            return DevState.ERROR
+        
     def queue_buffer(self, buf, size):
-        print('cleanup')
         andor.sdk.AT_QueueBuffer(self.handle, buf, size)
+        
+    def handle_image(self, buf, size):
+        img = np.empty((self.height, self.width), dtype=np.int16)
+        ret = atutility.sdk.AT_ConvertBuffer(buf, andor.ffi.from_buffer(img), self.width, self.height, 
+                                             self.stride, self.pixel_encoding, 'Mono16')
+        if ret != 0:
+            raise RuntimeError('Error in AT_ConvertBuffer')
+        # return buffer to andor sdk
+        self.queue_buffer(buf, size)
+                
+        if self._fliplr:
+            img = np.fliplr(img)
+                    
+        if self._flipud:
+            img = np.flipud(img)
+                
+        if self._rotation:
+            img = np.rot90(img, self._rotation)
+            
+        img = np.ascontiguousarray(img)
+        return img
     
     def main(self):
         pipe = self.context.socket(zmq.PAIR)
@@ -60,65 +94,80 @@ class Andor3Device(Device):
         poller = zmq.Poller()
         poller.register(fd_video, zmq.POLLIN)
         poller.register(pipe, zmq.POLLIN)
+        poller.register(self.monitor_socket, zmq.POLLIN)
         last_frame = zmq.Frame()
-        acquired_frames = 0
-        running = False
+        
+        def finish():
+            if self._running:
+                self.data_socket.send_json({'htype': 'series_end'})
+            andor.sdk.AT_Command(self.handle, 'AcquisitionStop')
+            andor.sdk.AT_Flush(self.handle)
+            self._acquired_frames = 0
+            self._running = 0
+        
         while True:
             events = dict(poller.poll())
             if fd_video in events and events[fd_video] == zmq.POLLIN:
-                img = andor.wait_buffer(self.handle, 0)
-                if img is None:
+                ret = andor.wait_buffer(self.handle, 0)
+                if ret is None:
                     continue
-                buf, size = img
-                print('frame', acquired_frames)
-                frame = zmq.Frame(andor.ffi.buffer(buf, size), copy=False)
-                weakref.finalize(frame, self.queue_buffer, buf, size)
+                buf, size = ret
+                print('frame', self._acquired_frames)
+                img = self.handle_image(buf, size)
+                frame = zmq.Frame(img, copy=False)
                 last_frame = frame
                 self.data_socket.send_json({'htype': 'image',
-                                  'frame': acquired_frames,
+                                  'frame': self._acquired_frames,
                                   'shape': [self.height, self.width],
                                   'type': 'int16',
                                   'compression': 'none'}, flags=zmq.SNDMORE)
                 self.data_socket.send(frame, copy=False)
-                acquired_frames += 1
-                if acquired_frames == self.frame_count:
-                    self.data_socket.send_json({'htype': 'series_end'})
-                    andor.sdk.AT_Command(self.handle, 'AcquisitionStop')
-                    andor.sdk.AT_Flush(self.handle)
-                    acquired_frames = 0
+                self._acquired_frames += 1
+                if self._acquired_frames == self._frame_count:
+                    finish()
                 
             if pipe in events and events[pipe] == zmq.POLLIN:
                 msg = pipe.recv()
                 if msg == b'start':
-                    running = True
+                    print('start')
+                    self._running = 1
                     self.data_socket.send_json({'htype': 'header',
                                                 'filename': self._filename})
                 elif msg == b'stop':
-                    if running:
-                        self.data_socket.send_json({'htype': 'series_end'})
-                    andor.sdk.AT_Command(self.handle, 'AcquisitionStop')
-                    andor.sdk.AT_Flush(self.handle)
-                    acquired_frames = 0
-                    running = False
+                    print('end')
+                    finish()
+                    
+            if self.monitor_socket in events and events[self.monitor_socket] == zmq.POLLIN:
+                print(self.monitor_socket.recv())
+                self.monitor_socket.send_json({'htype': 'image',
+                                  'frame': self._acquired_frames,
+                                  'shape': [self.height, self.width],
+                                  'type': 'int16',
+                                  'compression': 'none'}, flags=zmq.SNDMORE)
+                self.monitor_socket.send(last_frame, copy=False)
+                print('send monitoring frame')
+            
             
     @command
     def start(self):
-        print('start')
+        print('start', self._frame_count)
         self.height = andor.get_int(self.handle, 'AOIHeight')
         self.width = andor.get_int(self.handle, 'AOIWidth')
+        self.stride = andor.get_int(self.handle, 'AOIStride')
+        self.pixel_encoding = andor.get_enum_string(self.handle, 'PixelEncoding')
+        print(self.height, self.width, self.stride, self.pixel_encoding)
         self.pipe.send(b'start')
         for buf in self.buffers:
             andor.sdk.AT_QueueBuffer(self.handle, andor.ffi.from_buffer(buf), buf.nbytes)
         andor.sdk.AT_Command(self.handle, 'AcquisitionStart')
         
     @command
-    def stop(self):
-        print('stop')
-        self.pipe.send(b'stop')
+    def software_trigger(self):
+        andor.sdk.AT_Command(self.handle, 'SoftwareTrigger')
         
     @command
-    def test(self):
-        print('test')
+    def stop(self):
+        print('stop')
         self.pipe.send(b'stop')
         
     @attribute(dtype=str)
@@ -148,7 +197,63 @@ class Andor3Device(Device):
         if ret != 0:
             raise RuntimeError('Error setting exposure time: %s', andor.errors.get(ret, ''))
         
+    @attribute(dtype=bool)
+    def overlap(self):
+        ret = andor.get_bool(self.handle, 'Overlap')
+        value = True if ret == 1 else False
+        return value
+    
+    @overlap.setter
+    def overlap(self, value):
+        attr = 1 if value == True else 0
+        andor.sdk.AT_SetBool(self.handle, 'Overlap', attr)
+    
+    @attribute(dtype=str)
+    def simple_preamp_gain_control(self):
+        ret = andor.get_enum_string(self.handle, 'SimplePreAmpGainControl')
+        return ret
+    
+    @simple_preamp_gain_control.setter
+    def simple_preamp_gain_control(self, value):
+        andor.set_enum_string(self.handle, 'SimplePreAmpGainControl', value)
         
+    @attribute(dtype=str)
+    def trigger_mode(self):
+        return andor.get_enum_string(self.handle, 'TriggerMode')
+    
+    @trigger_mode.setter
+    def trigger_mode(self, value):
+        andor.set_enum_string(self.handle, 'TriggerMode', value)
+        
+    @attribute
+    def rotation(self):
+        return self._rotation
+    
+    @attribute(dtype=bool)
+    def fliplr(self):
+        return self._fliplr
+    
+    @fliplr.setter
+    def fliplr(self, value):
+        self._fliplr = value
+        
+    @attribute(dtype=bool)
+    def flipud(self):
+        return self._flipud
+    
+    @flipud.setter
+    def flipud(self, value):
+        self._flipud = value
+        
+    @attribute(dtype=int)
+    def rotation(self):
+        return self._rotation
+    
+    @rotation.setter
+    def rotation(self, value):
+        self._rotation = value
+        
+    
 if __name__ == '__main__':
     
     #dev_info = tango.DbDevInfo()

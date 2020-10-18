@@ -70,14 +70,6 @@ errors = {
 sdk = ffi.dlopen('libatcore.so')
 AT_HANDLE_SYSTEM = 1
 
-def check_error_dec(func):
-    def wrapper():
-        ret = func()
-        if ret != 0:
-            print('Error')
-            print(func)
-    return wrapper
-
 def check_error(ret):
     if ret != 0:
         print('error', ret)
@@ -158,6 +150,7 @@ def wait_buffer(handle, timeout=0):
     #elif ret == AT_ERR_TIMEDOUT:
     #    return None
     else:
+        print(ret)
         return None
     #else:
     #    raise RuntimeError('Error in calling wait_buffer %d' %ret)
