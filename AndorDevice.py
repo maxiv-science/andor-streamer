@@ -54,14 +54,14 @@ class Andor3Device(Device):
     def init_device(self):
         self.set_state(DevState.ON)
         
-    def get_state(self):
-        print('get state')
+    def always_executed_hook(self):
+        #print('get state')
         if self._running == 0:
-            return DevState.ON
+            self.set_state(DevState.ON)
         elif self._running == 1:
-            return DevState.RUNNING
+            self.set_state(DevState.RUNNING)
         else:
-            return DevState.ERROR
+            self.set_state(DevState.ERROR)
         
     def queue_buffer(self, buf, size):
         andor.sdk.AT_QueueBuffer(self.handle, buf, size)
@@ -169,6 +169,10 @@ class Andor3Device(Device):
     def stop(self):
         print('stop')
         self.pipe.send(b'stop')
+
+    @attribute(dtype=int)
+    def acquired_frames(self):
+        return self._acquired_frames
         
     @attribute(dtype=str)
     def filename(self):
