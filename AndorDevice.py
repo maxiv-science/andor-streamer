@@ -102,7 +102,6 @@ class Andor3Device(Device):
                 self.data_socket.send_json({'htype': 'series_end'})
             andor.sdk.AT_Command(self.handle, 'AcquisitionStop')
             andor.sdk.AT_Flush(self.handle)
-            self._acquired_frames = 0
             self._running = 0
         
         while True:
@@ -156,6 +155,7 @@ class Andor3Device(Device):
         self.stride = andor.get_int(self.handle, 'AOIStride')
         self.pixel_encoding = andor.get_enum_string(self.handle, 'PixelEncoding')
         print(self.height, self.width, self.stride, self.pixel_encoding)
+        self._acquired_frames = 0
         self.pipe.send(b'start')
         for buf in self.buffers:
             andor.sdk.AT_QueueBuffer(self.handle, andor.ffi.from_buffer(buf), buf.nbytes)
