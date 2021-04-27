@@ -67,9 +67,12 @@ class Andor3Device(Device):
         andor.sdk.AT_QueueBuffer(self.handle, buf, size)
         
     def handle_image(self, buf, size):
-        img = np.empty((self.height, self.width), dtype=np.int16)
-        ret = atutility.sdk.AT_ConvertBuffer(buf, andor.ffi.from_buffer(img), self.width, self.height, 
-                                             self.stride, self.pixel_encoding, 'Mono16')
+        img = np.empty((self.height, self.width), dtype=np.uint16)
+        ret = atutility.sdk.AT_ConvertBuffer(buf, 
+                                             andor.ffi.from_buffer(img),
+                                             self.width, self.height,
+                                             self.stride, self.pixel_encoding,
+                                             'Mono16')
         if ret != 0:
             raise RuntimeError('Error in AT_ConvertBuffer')
         # return buffer to andor sdk
@@ -118,7 +121,7 @@ class Andor3Device(Device):
                 self.data_socket.send_json({'htype': 'image',
                                   'frame': self._acquired_frames,
                                   'shape': [self.height, self.width],
-                                  'type': 'int16',
+                                  'type': 'uint16',
                                   'compression': 'none'}, flags=zmq.SNDMORE)
                 self.data_socket.send(frame, copy=False)
                 self._acquired_frames += 1
