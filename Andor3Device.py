@@ -2,7 +2,6 @@ import os
 import zmq
 import andor 
 import atutility
-import weakref
 import tango
 import numpy as np
 from threading import Thread
@@ -40,7 +39,7 @@ class Andor3Device(Device):
         andor.set_enum_string(self.handle, 'SimplePreAmpGainControl', '16-bit (low noise & high well capacity)')
         andor.set_enum_string(self.handle, 'TriggerMode', 'Internal')
         andor.set_enum_string(self.handle, 'CycleMode', 'Fixed')
-
+       
         image_size = andor.get_int(self.handle, 'ImageSizeBytes')
         print('ImageSizeBytes', image_size)
         self.buffers = []
@@ -144,20 +143,21 @@ class Andor3Device(Device):
                 self.monitor_socket.send_json({'htype': 'image',
                                   'frame': self._acquired_frames,
                                   'shape': [self.height, self.width],
-                                  'type': 'int16',
+                                  'type': 'uint16',
                                   'compression': 'none'}, flags=zmq.SNDMORE)
                 self.monitor_socket.send(last_frame, copy=False)
                 print('send monitoring frame')
             
             
     @command
-    def start(self):
+    def Start(self):
         print('start', self._frame_count)
         self.height = andor.get_int(self.handle, 'AOIHeight')
         self.width = andor.get_int(self.handle, 'AOIWidth')
         self.stride = andor.get_int(self.handle, 'AOIStride')
         self.pixel_encoding = andor.get_enum_string(self.handle, 'PixelEncoding')
         print(self.height, self.width, self.stride, self.pixel_encoding)
+        print('ReadoutTime', andor.get_float(self.handle, 'ReadoutTime'))
         self._acquired_frames = 0
         self.pipe.send(b'start')
         for buf in self.buffers:
@@ -165,53 +165,53 @@ class Andor3Device(Device):
         andor.sdk.AT_Command(self.handle, 'AcquisitionStart')
         
     @command
-    def software_trigger(self):
+    def SoftwareTrigger(self):
         andor.sdk.AT_Command(self.handle, 'SoftwareTrigger')
         
     @command
-    def stop(self):
+    def Stop(self):
         print('stop')
         self.pipe.send(b'stop')
 
     @attribute(dtype=int)
-    def acquired_frames(self):
+    def nFramesAcquired(self):
         return self._acquired_frames
         
     @attribute(dtype=str)
-    def filename(self):
+    def Filename(self):
         return self._filename
     
-    @filename.setter
-    def filename(self, value):
+    @Filename.setter
+    def Filename(self, value):
         self._filename = value
         
     @attribute(dtype=int)
-    def frame_count(self):
+    def nTriggers(self):
         return self._frame_count
     
-    @frame_count.setter
-    def frame_count(self, value):
+    @nTriggers.setter
+    def nTriggers(self, value):
         andor.sdk.AT_SetInt(self.handle, 'FrameCount', value)
         self._frame_count = value
         
     @attribute(dtype=float)
-    def exposure_time(self):
+    def ExposureTime(self):
         return andor.get_float(self.handle, 'ExposureTime')
     
-    @exposure_time.setter
-    def exposure_time(self, value):
+    @ExposureTime.setter
+    def ExposureTime(self, value):
         ret = andor.sdk.AT_SetFloat(self.handle, 'ExposureTime', value)
         if ret != 0:
             raise RuntimeError('Error setting exposure time: %s', andor.errors.get(ret, ''))
         
     @attribute(dtype=bool)
-    def overlap(self):
+    def Overlap(self):
         ret = andor.get_bool(self.handle, 'Overlap')
         value = True if ret == 1 else False
         return value
     
-    @overlap.setter
-    def overlap(self, value):
+    @Overlap.setter
+    def Overlap(self, value):
         attr = 1 if value == True else 0
         andor.sdk.AT_SetBool(self.handle, 'Overlap', attr)
     
@@ -225,12 +225,26 @@ class Andor3Device(Device):
         andor.set_enum_string(self.handle, 'SimplePreAmpGainControl', value)
         
     @attribute(dtype=str)
-    def trigger_mode(self):
+    def TriggerMode(self):
         return andor.get_enum_string(self.handle, 'TriggerMode')
     
-    @trigger_mode.setter
-    def trigger_mode(self, value):
+    @TriggerMode.setter
+    def TriggerMode(self, value):
         andor.set_enum_string(self.handle, 'TriggerMode', value)
+       
+    @attribute(dtype=float)
+    def FrameRate(self):
+        return andor.get_float(self.handle, 'FrameRate')
+    
+    @FrameRate.setter
+    def FrameRate(self, value):
+        ret = andor.sdk.AT_SetFloat(self.handle, 'FrameRate', value)
+        if ret != 0:
+            raise RuntimeError('Error setting FrameRate: %s', andor.errors.get(ret, ''))
+        
+    @attribute(dtype=float)
+    def SensorTemperature(self):
+        return andor.get_float(self.handle, 'SensorTemperature')
         
     @attribute
     def rotation(self):
@@ -262,13 +276,13 @@ class Andor3Device(Device):
         
     
 if __name__ == '__main__':
-    
-    #dev_info = tango.DbDevInfo()
-    #dev_info._class = 'Andor3Device'
-    #dev_info.server = 'Andor3Device/test'
-    #dev_info.name = 'zyla/test/1'
+    '''
+    dev_info = tango.DbDevInfo()
+    dev_info._class = 'Andor3Device'
+    dev_info.server = 'Andor3Device/test'
+    dev_info.name = 'zyla/test/1'
 
-    #db = tango.Database()
-    #db.add_device(dev_info)
-    
+    db = tango.Database()
+    db.add_device(dev_info)
+    '''
     Andor3Device.run_server()

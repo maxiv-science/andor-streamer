@@ -63,16 +63,17 @@ errors = {
     4: 'AT_ERR_NOTREADABLE',
     5: 'AT_ERR_NOTWRITABLE',
     6: 'AT_ERR_OUTOFRANGE',
-    13: 'AT_ERR_TIMEDOUT'
+    13: 'AT_ERR_TIMEDOUT',
+    19: 'AT_ERR_STRINGNOTIMPLEMENTED'
 }
 
-#sdk = ffi.dlopen('/opt/andor/sdk3/lib/libatcore.so')
 sdk = ffi.dlopen('libatcore.so')
 AT_HANDLE_SYSTEM = 1
 
 def check_error(ret):
-    if ret != 0:
-        print('error', ret)
+    if ret != AT_SUCCESS:
+        msg = errors.get(ret, '')
+        print('Error in Andor SDK! error code: %d, %s' %(ret, msg))
         
 def get_int(handle, command):
     result = ffi.new('AT_64*')
@@ -110,7 +111,6 @@ def get_enum_index(handle, command):
     return result[0]
     
 def get_enum_string(handle, command):
-    result_length = 128
     index = get_enum_index(handle, command)
     return get_enum_string_by_index(handle, command, index)
     
@@ -152,118 +152,3 @@ def wait_buffer(handle, timeout=0):
     else:
         print(ret)
         return None
-    #else:
-    #    raise RuntimeError('Error in calling wait_buffer %d' %ret)
-
- 
-### Start ### 
-# bsp02-o-ctl-ioc-01 zyla at femtomax
-# b303a-a100380-cab01-dia-detpicu-02 nanomax 
-'''
-check_error(sdk.AT_InitialiseLibrary())
-
-devcount = get_int(AT_HANDLE_SYSTEM, 'DeviceCount')
-print('Found', devcount, ' devices')
-
-handle = ffi.new('AT_H*')
-check_error(sdk.AT_Open(0, handle))
-handle = handle[0]
-print('CameraModel', get_string(handle, 'CameraModel'))
-print('CameraInformation', get_string(handle, 'CameraInformation'))
-print('SerialNumber', get_string(handle, 'SerialNumber'))
-print('SensorTemperature', get_float(handle, 'SensorTemperature'))
-print('TemperatureStatus', get_enum_string(handle, 'TemperatureStatus'))
-
-options = get_enum_string_options(handle, 'ElectronicShutteringMode')
-print('ElectronicShutteringMode options', options)
-
-options = get_enum_string_options(handle, 'PixelReadoutRate')
-print('PixelReadoutRate options', options)
-
-options = get_enum_string_options(handle, 'SimplePreAmpGainControl')
-print('SimplePreAmpGainControl options', options)
-
-
-#set_enum_string(handle, 'SimplePreAmpGainControl', '16-bit (low noise & high well capacity)')#'12-bit (low noise)')
-
-set_enum_string(handle, 'SimplePreAmpGainControl', '12-bit (high well capacity)')
-set_enum_string(handle, 'PixelReadoutRate', '280 MHz')
-check_error(sdk.AT_SetBool(handle, 'Overlap', 1)) 
-#print('Overlap implemented', is_implemented(handle, 'Overlap'))
-
-set_enum_string(handle, 'TriggerMode', 'Internal')
-set_enum_string(handle, 'CycleMode', 'Continuous')
-
-# Set ROI
-#check_error(sdk.AT_SetInt(handle, 'AOIHBin', 8))
-#check_error(sdk.AT_SetInt(handle, 'AOIVBin', 8))
-#check_error(sdk.AT_SetInt(handle, 'AOIWidth', 128))
-#check_error(sdk.AT_SetInt(handle, 'AOILeft', 1000))
-#check_error(sdk.AT_SetInt(handle, 'AOIHeight', 1000))
-#check_error(sdk.AT_SetBool(handle, 'VerticallyCentreAOI', 1)) 
-#check_error(sdk.AT_SetInt(handle, 'AOITop', 100))
-
-#set_enum_string(handle, 'ElectronicShutteringMode', 'Rolling')
-set_enum_string(handle, 'ElectronicShutteringMode', 'Global')
-
-#set_enum_string(handle, 'ElectronicShutteringMode', 'Global - 100% Duty Cycle')
-print('after')
-print('min exposure time', get_float_min(handle, 'ExposureTime'))
-print('max exposure time', get_float_max(handle, 'ExposureTime'))
-#check_error(sdk.AT_SetFloat(handle, 'ExposureTime', 0.011))
-
-print('PixelEncoding', get_enum_string(handle, 'PixelEncoding'))
-print('SimplePreAmpGainControl', get_enum_string(handle, 'SimplePreAmpGainControl'))
-#print('FullAOIControl', get_bool(handle, 'FullAOIControl'))
-#print('Overlap', get_bool(handle, 'Overlap'))
-print('TriggerMode', get_enum_string(handle, 'TriggerMode'))
-print('CycleMode', get_enum_string(handle, 'CycleMode'))
-print('ElectronicShutteringMode', get_enum_string(handle, 'ElectronicShutteringMode'))
-print('PixelReadoutRate', get_enum_string(handle, 'PixelReadoutRate'))
-print('ExposureTime', get_float(handle, 'ExposureTime'))
-print('ReadoutTime', get_float(handle, 'ReadoutTime'))
-#print('Readout Rate %.2e Hz' %(1.0 / get_float(handle, 'ReadoutTime')))
-
-#options = get_enum_string_options(handle, 'PixelReadoutRate')
-#print(options)
-
-
-image_size = get_int(handle, 'ImageSizeBytes')
-print('ImageSizeBytes', image_size)
-buffers = []
-for i in range(100):
-    buf = np.empty(image_size, np.uint8)
-    check_error(sdk.AT_QueueBuffer(handle, ffi.from_buffer(buf), image_size))
-    buffers.append(buf)
-    
-height = get_int(handle, 'AOIHeight')
-width = get_int(handle, 'AOIWidth')
-stride = get_int(handle, 'AOIStride')
-print(height, width, stride)
-
-### Acquisition ###
-
-
-nframes = 200
-check_error(sdk.AT_Command(handle, 'AcquisitionStart'))
-print('After AcquisitionStart')
-
-for i in range(nframes):
-    buf, size = wait_buffer(handle, 200000)
-    if i == 0:
-        start = time.time()
-    #print('frame', i)
-    #print(buf[0], buf[1], buf[2])
-    check_error(sdk.AT_QueueBuffer(handle, buf, size))
-
-end = time.time()
-rate = (nframes-1) / (end - start)
-print('Actual rate %.2e Hz' %rate)
-
-check_error(sdk.AT_Command(handle, 'AcquisitionStop'))
-check_error(sdk.AT_Flush(handle))
-
-
-check_error(sdk.AT_Close(handle))
-check_error(sdk.AT_FinaliseLibrary())
-'''
