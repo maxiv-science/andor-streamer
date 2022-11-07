@@ -35,6 +35,11 @@ class Andor3(Device):
         self._flipud = False
         self._rotation = 0
         
+        self._exposure_time = andor.get_float(self.handle, 'ExposureTime')
+        self._trigger_mode = andor.get_enum_string(self.handle, 'TriggerMode')
+        self._frame_rate = andor.get_float(self.handle, 'FrameRate')
+        self._sensor_cooling = andor.get_bool(self.handle, 'SensorCooling')
+        
         atutility.sdk.AT_InitialiseUtilityLibrary()
         andor.set_enum_string(self.handle, 'SimplePreAmpGainControl', '16-bit (low noise & high well capacity)')
         andor.set_enum_string(self.handle, 'TriggerMode', 'Internal')
@@ -113,7 +118,7 @@ class Andor3(Device):
                 if ret is None:
                     continue
                 buf, size = ret
-                print('frame', self._acquired_frames)
+                #print('frame', self._acquired_frames)
                 img = self.handle_image(buf, size)
                 frame = zmq.Frame(img, copy=False)
                 last_frame = frame
@@ -196,13 +201,14 @@ class Andor3(Device):
         
     @attribute(dtype=float)
     def ExposureTime(self):
-        return andor.get_float(self.handle, 'ExposureTime')
+        return self._exposure_time
     
     @ExposureTime.setter
     def ExposureTime(self, value):
         ret = andor.sdk.AT_SetFloat(self.handle, 'ExposureTime', value)
         if ret != 0:
             raise RuntimeError('Error setting exposure time: %s', andor.errors.get(ret, ''))
+        self._exposure_time = andor.get_float(self.handle, 'ExposureTime')
         
     @attribute(dtype=bool)
     def Overlap(self):
@@ -228,21 +234,23 @@ class Andor3(Device):
         
     @attribute(dtype=str)
     def TriggerMode(self):
-        return andor.get_enum_string(self.handle, 'TriggerMode')
+        return self._trigger_mode
     
     @TriggerMode.setter
     def TriggerMode(self, value):
         andor.set_enum_string(self.handle, 'TriggerMode', value)
+        self._trigger_mode = value
        
     @attribute(dtype=float)
     def FrameRate(self):
-        return andor.get_float(self.handle, 'FrameRate')
+        return self._frame_rate
     
     @FrameRate.setter
     def FrameRate(self, value):
         ret = andor.sdk.AT_SetFloat(self.handle, 'FrameRate', value)
         if ret != 0:
             raise RuntimeError('Error setting FrameRate: %s', andor.errors.get(ret, ''))
+        self._frame_rate = andor.get_float(self.handle, 'FrameRate')
         
     @attribute(dtype=float)
     def SensorTemperature(self):
@@ -250,12 +258,13 @@ class Andor3(Device):
     
     @attribute(dtype=bool)
     def SensorCooling(self):
-        return andor.get_bool(self.handle, 'SensorCooling')
+        return self._sensor_cooling
     
     @SensorCooling.setter
     def SensorCooling(self, value):
         attr = 1 if value == True else 0
         andor.sdk.AT_SetBool(self.handle, 'SensorCooling', attr)
+        self._sensor_cooling = value
         
     @attribute(dtype=str)
     def TemperatureStatus(self):
@@ -296,4 +305,6 @@ def main():
     db.add_device(dev_info)
     '''
     Andor3.run_server()
+    
+main()
     
