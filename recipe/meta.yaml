@@ -20,7 +20,8 @@ requirements:
     - python
     - pytango
     - pyzmq
-
+    - cffi
+    
 about:
   license: GPL-3.0-or-later
   license_file: ../LICENSE.txt

@@ -124,7 +124,7 @@ class Andor3(Device):
                 last_frame = frame
                 self.data_socket.send_json({'htype': 'image',
                                   'frame': self._acquired_frames,
-                                  'shape': [self.height, self.width],
+                                  'shape': img.shape,
                                   'type': 'uint16',
                                   'compression': 'none'}, flags=zmq.SNDMORE)
                 self.data_socket.send(frame, copy=False)
