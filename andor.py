@@ -147,8 +147,6 @@ def wait_buffer(handle, timeout=0):
     ret = sdk.AT_WaitBuffer(handle, buf_ptr, buffer_size, timeout)
     if ret == AT_SUCCESS:
         return (buf_ptr[0], buffer_size[0])
-    #elif ret == AT_ERR_TIMEDOUT:
-    #    return None
     else:
         print(ret)
         return None

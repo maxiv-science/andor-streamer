@@ -8,7 +8,7 @@ from threading import Thread
 from tango import DevState
 from tango.server import Device, attribute, command, run, device_property
 
-class Andor3Device(Device):
+class Andor3(Device):
     def __init__(self, cl, name):
         Device.__init__(self, cl, name)
         andor.sdk.AT_InitialiseLibrary()
@@ -39,7 +39,7 @@ class Andor3Device(Device):
         andor.set_enum_string(self.handle, 'SimplePreAmpGainControl', '16-bit (low noise & high well capacity)')
         andor.set_enum_string(self.handle, 'TriggerMode', 'Internal')
         andor.set_enum_string(self.handle, 'CycleMode', 'Fixed')
-       
+        
         image_size = andor.get_int(self.handle, 'ImageSizeBytes')
         print('ImageSizeBytes', image_size)
         self.buffers = []
@@ -150,7 +150,7 @@ class Andor3Device(Device):
             
             
     @command
-    def Start(self):
+    def Arm(self):
         print('start', self._frame_count)
         self.height = andor.get_int(self.handle, 'AOIHeight')
         self.width = andor.get_int(self.handle, 'AOIWidth')
@@ -215,6 +215,7 @@ class Andor3Device(Device):
         attr = 1 if value == True else 0
         andor.sdk.AT_SetBool(self.handle, 'Overlap', attr)
     
+    '''
     @attribute(dtype=str)
     def simple_preamp_gain_control(self):
         ret = andor.get_enum_string(self.handle, 'SimplePreAmpGainControl')
@@ -223,6 +224,7 @@ class Andor3Device(Device):
     @simple_preamp_gain_control.setter
     def simple_preamp_gain_control(self, value):
         andor.set_enum_string(self.handle, 'SimplePreAmpGainControl', value)
+    '''
         
     @attribute(dtype=str)
     def TriggerMode(self):
@@ -245,44 +247,53 @@ class Andor3Device(Device):
     @attribute(dtype=float)
     def SensorTemperature(self):
         return andor.get_float(self.handle, 'SensorTemperature')
-        
-    @attribute
-    def rotation(self):
-        return self._rotation
     
     @attribute(dtype=bool)
-    def fliplr(self):
+    def SensorCooling(self):
+        return andor.get_bool(self.handle, 'SensorCooling')
+    
+    @SensorCooling.setter
+    def SensorCooling(self, value):
+        attr = 1 if value == True else 0
+        andor.sdk.AT_SetBool(self.handle, 'SensorCooling', attr)
+        
+    @attribute(dtype=str)
+    def TemperatureStatus(self):
+        return andor.get_enum_string(self.handle, 'TemperatureStatus')
+        
+    @attribute(dtype=bool, memorized=True, hw_memorized=True)
+    def Fliplr(self):
         return self._fliplr
     
-    @fliplr.setter
-    def fliplr(self, value):
+    @Fliplr.setter
+    def Fliplr(self, value):
         self._fliplr = value
         
-    @attribute(dtype=bool)
-    def flipud(self):
+    @attribute(dtype=bool, memorized=True, hw_memorized=True)
+    def Flipud(self):
         return self._flipud
     
-    @flipud.setter
-    def flipud(self, value):
+    @Flipud.setter
+    def Flipud(self, value):
         self._flipud = value
         
-    @attribute(dtype=int)
-    def rotation(self):
+    @attribute(dtype=int, memorized=True, hw_memorized=True)
+    def Rotation(self):
         return self._rotation
     
-    @rotation.setter
-    def rotation(self, value):
+    @Rotation.setter
+    def Rotation(self, value):
         self._rotation = value
         
     
 if __name__ == '__main__':
     '''
     dev_info = tango.DbDevInfo()
-    dev_info._class = 'Andor3Device'
-    dev_info.server = 'Andor3Device/test'
+    dev_info._class = 'Andor3'
+    dev_info.server = 'Andor3/test'
     dev_info.name = 'zyla/test/1'
 
     db = tango.Database()
     db.add_device(dev_info)
     '''
-    Andor3Device.run_server()
+    Andor3.run_server()
