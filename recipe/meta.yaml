@@ -21,10 +21,6 @@ requirements:
     - pytango
     - pyzmq
 
-test:
-  commands:
-    - Andor3 --help 2>&1 | grep usage
-
 about:
   license: GPL-3.0-or-later
   license_file: ../LICENSE.txt
