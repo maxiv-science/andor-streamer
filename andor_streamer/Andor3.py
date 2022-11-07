@@ -1,12 +1,12 @@
 import os
 import zmq
-import andor 
-import atutility
 import tango
 import numpy as np
 from threading import Thread
 from tango import DevState
 from tango.server import Device, attribute, command, run, device_property
+from . import andor 
+from . import atutility
 
 class Andor3(Device):
     def __init__(self, cl, name):
@@ -305,6 +305,4 @@ def main():
     db.add_device(dev_info)
     '''
     Andor3.run_server()
-    
-main()
     
