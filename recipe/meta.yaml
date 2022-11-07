@@ -1,0 +1,32 @@
+package:
+  name: andor-streamer
+  version: "{{ SETUPTOOLS_SCM_PRETEND_VERSION }}"
+
+source:
+  path: ..
+
+build:
+  noarch: python
+  script: {{ PYTHON }} -m pip install . -vv
+  entry_points:
+    - Andor3 = andor_streamer.Andor3:main
+
+requirements:
+  host:
+    - pip
+    - python
+    - setuptools-scm
+  run:
+    - python
+    - pytango
+    - pyzmq
+
+test:
+  commands:
+    - Andor3 --help 2>&1 | grep usage
+
+about:
+  license: GPL-3.0-or-later
+  license_file: ../LICENSE.txt
+
+ 

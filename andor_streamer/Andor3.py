@@ -285,8 +285,7 @@ class Andor3(Device):
     def Rotation(self, value):
         self._rotation = value
         
-    
-if __name__ == '__main__':
+def main():
     '''
     dev_info = tango.DbDevInfo()
     dev_info._class = 'Andor3'
@@ -297,3 +296,4 @@ if __name__ == '__main__':
     db.add_device(dev_info)
     '''
     Andor3.run_server()
+    
