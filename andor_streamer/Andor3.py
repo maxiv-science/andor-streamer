@@ -9,8 +9,7 @@ from . import andor
 from . import atutility
 
 class Andor3(Device):
-    def __init__(self, cl, name):
-        Device.__init__(self, cl, name)
+    def init_device(self):
         andor.sdk.AT_InitialiseLibrary()
         devcount = andor.get_int(andor.AT_HANDLE_SYSTEM, 'DeviceCount')
         handle = andor.ffi.new('AT_H*')
@@ -54,8 +53,6 @@ class Andor3(Device):
             
         self.thread = Thread(target=self.main)
         self.thread.start()
-        
-    def init_device(self):
         self.set_state(DevState.ON)
         
     def always_executed_hook(self):

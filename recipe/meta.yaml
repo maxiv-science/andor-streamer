@@ -18,9 +18,10 @@ requirements:
     - setuptools-scm
   run:
     - python
+    - cffi
+    - numpy
     - pytango
     - pyzmq
-    - cffi
     
 about:
   license: GPL-3.0-or-later
