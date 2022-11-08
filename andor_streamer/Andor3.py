@@ -45,7 +45,7 @@ class Andor3(Device):
         andor.set_enum_string(self.handle, 'CycleMode', 'Fixed')
         
         image_size = andor.get_int(self.handle, 'ImageSizeBytes')
-        print('ImageSizeBytes', image_size)
+        #print('ImageSizeBytes', image_size)
         self.buffers = []
         for i in range(100):
             buf = np.empty(image_size, np.uint8)
@@ -100,6 +100,7 @@ class Andor3(Device):
         poller.register(pipe, zmq.POLLIN)
         poller.register(self.monitor_socket, zmq.POLLIN)
         last_frame = zmq.Frame()
+        last_shape = [0, 0]
         
         def finish():
             if self._running:
@@ -119,6 +120,7 @@ class Andor3(Device):
                 img = self.handle_image(buf, size)
                 frame = zmq.Frame(img, copy=False)
                 last_frame = frame
+                last_shape = img.shape
                 self.data_socket.send_json({'htype': 'image',
                                   'frame': self._acquired_frames,
                                   'shape': img.shape,
@@ -144,7 +146,7 @@ class Andor3(Device):
                 print(self.monitor_socket.recv())
                 self.monitor_socket.send_json({'htype': 'image',
                                   'frame': self._acquired_frames,
-                                  'shape': [self.height, self.width],
+                                  'shape': last_shape,
                                   'type': 'uint16',
                                   'compression': 'none'}, flags=zmq.SNDMORE)
                 self.monitor_socket.send(last_frame, copy=False)
