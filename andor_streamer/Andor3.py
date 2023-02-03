@@ -136,7 +136,6 @@ class Andor3(Device):
         poller = zmq.Poller()
         poller.register(fd_video, zmq.POLLIN)
         poller.register(pipe, zmq.POLLIN)
-        poller.register(self.monitor_socket, zmq.POLLIN)
 
         def finish():
             if self._running:
@@ -157,8 +156,6 @@ class Andor3(Device):
                 #print('frame', self._acquired_frames)
                 img = self.handle_image(buf, size)
                 frame = zmq.Frame(img, copy=False)
-                last_frame = frame
-                last_shape = img.shape
                 self.data_socket.send_json({'htype': 'image',
                                   'frame': self._acquired_frames,
                                   'shape': img.shape,
