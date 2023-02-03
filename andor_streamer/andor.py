@@ -73,12 +73,27 @@ AT_HANDLE_SYSTEM = 1
 def check_error(ret):
     if ret != AT_SUCCESS:
         msg = errors.get(ret, '')
-        print('Error in Andor SDK! error code: %d, %s' %(ret, msg))
-        
+        raise RuntimeError('Error in Andor SDK! error code: %d, %s' %(ret, msg))
+'''    
+    
+from functools import wraps
+def check_error(func):
+    @wraps(func)
+    def wrapper(self, *args, **kwargs):
+        ret = func(self, *args, **kwargs)
+        if ret != AT_SUCCESS:
+            msg = errors.get(ret, '')
+            raise RuntimeError('Error in Andor SDK! error code: %d, %s' %(ret, msg))
+    return wrapper
+'''
+
 def get_int(handle, command):
     result = ffi.new('AT_64*')
     check_error(sdk.AT_GetInt(handle, command, result))
     return result[0]
+
+def set_int(handle, command, value):
+    check_error(sdk.AT_SetInt(handle, command, value))
 
 def get_float(handle, command):
     result = ffi.new('double*')
@@ -122,7 +137,7 @@ def get_enum_count(handle, command):
 def get_enum_string_options(handle, command) :
     count = get_enum_count(handle, command)
     options = []
-    for i in range(0, count):
+    for i in range(count):
         options.append(get_enum_string_by_index(handle, command, i))          
     return options 
 
@@ -148,5 +163,5 @@ def wait_buffer(handle, timeout=0):
     if ret == AT_SUCCESS:
         return (buf_ptr[0], buffer_size[0])
     else:
-        print(ret)
+        print('wait_buffer error', ret)
         return None

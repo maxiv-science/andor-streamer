@@ -5,18 +5,23 @@ import numpy as np
 from threading import Thread
 from tango import DevState
 from tango.server import Device, attribute, command, run, device_property
-from . import andor 
-from . import atutility
+#from . import andor 
+#from . import atutility
+
+import andor 
+import atutility
 
 class Andor3(Device):
     def init_device(self):
+        super().init_device()
         andor.sdk.AT_InitialiseLibrary()
         devcount = andor.get_int(andor.AT_HANDLE_SYSTEM, 'DeviceCount')
         handle = andor.ffi.new('AT_H*')
         andor.sdk.AT_Open(0, handle)
         self.handle = handle[0]
         print('Found', devcount, ' devices')
-        print('CameraModel', andor.get_string(self.handle, 'CameraModel'))
+        self._camera_model = andor.get_string(self.handle, 'CameraModel')
+        print('CameraModel', self._camera_model)
         
         self.context = zmq.Context()
         self.pipe = self.context.socket(zmq.PAIR)
@@ -25,6 +30,7 @@ class Andor3(Device):
         self.data_socket.bind('tcp://*:9999')
         self.monitor_socket = self.context.socket(zmq.REP)
         self.monitor_socket.bind('tcp://*:9998')
+        
         self._filename = ''
         self._frame_count = 1
         self._acquired_frames = 0
@@ -36,12 +42,23 @@ class Andor3(Device):
         
         self._exposure_time = andor.get_float(self.handle, 'ExposureTime')
         self._trigger_mode = andor.get_enum_string(self.handle, 'TriggerMode')
-        self._frame_rate = andor.get_float(self.handle, 'FrameRate')
+        self._shutter_mode = andor.get_enum_string(self.handle, 'ElectronicShutteringMode')
+        self._pixel_readout_rate = andor.get_enum_string(self.handle, 'PixelReadoutRate')
         self._sensor_cooling = andor.get_bool(self.handle, 'SensorCooling')
+        self._hbin = andor.get_int(self.handle, 'AOIHBin')
+        self._width = andor.get_int(self.handle, 'AOIWidth')
+        self._left = andor.get_int(self.handle, 'AOILeft')
+        self._vbin = andor.get_int(self.handle, 'AOIVBin')
+        self._height = andor.get_int(self.handle, 'AOIHeight')
+        self._top = andor.get_int(self.handle, 'AOITop')
         
         atutility.sdk.AT_InitialiseUtilityLibrary()
-        andor.set_enum_string(self.handle, 'SimplePreAmpGainControl', '16-bit (low noise & high well capacity)')
-        andor.set_enum_string(self.handle, 'TriggerMode', 'Internal')
+        
+        #print(andor.get_enum_string_options(self.handle, 'TemperatureControl'))
+        
+        options = andor.get_enum_string_options(self.handle, 'SimplePreAmpGainControl')
+        self._gain_control_options = '\n'.join(options)
+        
         andor.set_enum_string(self.handle, 'CycleMode', 'Fixed')
         
         image_size = andor.get_int(self.handle, 'ImageSizeBytes')
@@ -54,24 +71,37 @@ class Andor3(Device):
         self.thread = Thread(target=self.main)
         self.thread.start()
         self.set_state(DevState.ON)
-        
-    def always_executed_hook(self):
-        #print('get state')
+    
+    def delete_device(self):
+        print('delete_device')
+        self.context.destroy()
+    
+    def update_state_and_status(self):
         if self._running == 0:
-            self.set_state(DevState.ON)
+            state, status = DevState.ON, 'Idle'
         elif self._running == 1:
-            self.set_state(DevState.RUNNING)
+            state, status = DevState.RUNNING, 'Acquisition in progress'
         else:
-            self.set_state(DevState.ERROR)
+            state, status = DevState.ERROR, 'Error'
+        self.set_state(state)
+        self.set_status(status)
+            
+    def dev_state(self):
+        self.update_state_and_status()
+        return self.get_state()
+    
+    def dev_status(self):
+        self.update_state_and_status()
+        return self.get_status()
         
     def queue_buffer(self, buf, size):
         andor.sdk.AT_QueueBuffer(self.handle, buf, size)
         
     def handle_image(self, buf, size):
-        img = np.empty((self.height, self.width), dtype=np.uint16)
+        img = np.empty((self._height, self._width), dtype=np.uint16)
         ret = atutility.sdk.AT_ConvertBuffer(buf, 
                                              andor.ffi.from_buffer(img),
-                                             self.width, self.height,
+                                             self._width, self._height,
                                              self.stride, self.pixel_encoding,
                                              'Mono16')
         if ret != 0:
@@ -156,12 +186,11 @@ class Andor3(Device):
     @command
     def Arm(self):
         print('start', self._frame_count)
-        self.height = andor.get_int(self.handle, 'AOIHeight')
-        self.width = andor.get_int(self.handle, 'AOIWidth')
         self.stride = andor.get_int(self.handle, 'AOIStride')
         self.pixel_encoding = andor.get_enum_string(self.handle, 'PixelEncoding')
-        print(self.height, self.width, self.stride, self.pixel_encoding)
+        print(self._height, self._width, self.stride, self.pixel_encoding)
         print('ReadoutTime', andor.get_float(self.handle, 'ReadoutTime'))
+        print('ImageSizeBytes', andor.get_int(self.handle, 'ImageSizeBytes'))
         self._acquired_frames = 0
         self.pipe.send(b'start')
         for buf in self.buffers:
@@ -176,6 +205,10 @@ class Andor3(Device):
     def Stop(self):
         print('stop')
         self.pipe.send(b'stop')
+        
+    @attribute(dtype=str)
+    def CameraModel(self):
+        return self._camera_model
 
     @attribute(dtype=int)
     def nFramesAcquired(self):
@@ -206,7 +239,7 @@ class Andor3(Device):
     def ExposureTime(self, value):
         ret = andor.sdk.AT_SetFloat(self.handle, 'ExposureTime', value)
         if ret != 0:
-            raise RuntimeError('Error setting exposure time: %s', andor.errors.get(ret, ''))
+            raise RuntimeError('Error setting exposure time: %s' %andor.errors.get(ret, ''))
         self._exposure_time = andor.get_float(self.handle, 'ExposureTime')
         
     @attribute(dtype=bool)
@@ -220,16 +253,18 @@ class Andor3(Device):
         attr = 1 if value == True else 0
         andor.sdk.AT_SetBool(self.handle, 'Overlap', attr)
     
-    '''
     @attribute(dtype=str)
-    def simple_preamp_gain_control(self):
+    def SimplePreAmpGainControl(self):
         ret = andor.get_enum_string(self.handle, 'SimplePreAmpGainControl')
         return ret
     
-    @simple_preamp_gain_control.setter
-    def simple_preamp_gain_control(self, value):
+    @SimplePreAmpGainControl.setter
+    def SimplePreAmpGainControl(self, value):
         andor.set_enum_string(self.handle, 'SimplePreAmpGainControl', value)
-    '''
+    
+    @attribute(dtype=str)
+    def SimplePreAmpGainControlOptions(self):
+        return self._gain_control_options
         
     @attribute(dtype=str)
     def TriggerMode(self):
@@ -242,18 +277,99 @@ class Andor3(Device):
        
     @attribute(dtype=float)
     def FrameRate(self):
-        return self._frame_rate
+        return andor.get_float(self.handle, 'FrameRate')
     
     @FrameRate.setter
     def FrameRate(self, value):
         ret = andor.sdk.AT_SetFloat(self.handle, 'FrameRate', value)
         if ret != 0:
-            raise RuntimeError('Error setting FrameRate: %s', andor.errors.get(ret, ''))
-        self._frame_rate = andor.get_float(self.handle, 'FrameRate')
+            raise RuntimeError('Error setting FrameRate: %s' %andor.errors.get(ret, ''))
+        #self._frame_rate = andor.get_float(self.handle, 'FrameRate')
         
+    @attribute(dtype=str)
+    def ElectronicShutteringMode(self):
+        return self._shutter_mode
+        
+    @ElectronicShutteringMode.setter
+    def ElectronicShutteringMode(self, value):
+        andor.set_enum_string(self.handle, 'ElectronicShutteringMode', value)
+        self._shutter_mode = value
+        
+    @attribute(dtype=str)
+    def PixelReadoutRate(self):
+        return self._pixel_readout_rate
+    
+    @PixelReadoutRate.setter
+    def PixelReadoutRate(self, value):
+        andor.set_enum_string(self.handle, 'PixelReadoutRate', value)
+        self._pixel_readout_rate = value
+    
+    @attribute(dtype=str)
+    def PixelEncoding(self):
+        return andor.get_enum_string(self.handle, 'PixelEncoding')
+            
     @attribute(dtype=float)
     def SensorTemperature(self):
         return andor.get_float(self.handle, 'SensorTemperature')
+    
+    
+    # ROI attributes
+    
+    @attribute(dtype=int)
+    def AOIHBin(self):
+        return self._hbin
+    
+    @AOIHBin.setter
+    def AOIHBin(self, value):
+        andor.set_int(self.handle, 'AOIHBin', value)
+        self._hbin = value
+        self._width = andor.get_int(self.handle, 'AOIWidth')
+        
+    @attribute(dtype=int)
+    def AOIWidth(self):
+        return self._width
+    
+    @AOIWidth.setter
+    def AOIWidth(self, value):
+        andor.set_int(self.handle, 'AOIWidth', value)
+        self._width = value
+    
+    @attribute(dtype=int)
+    def AOILeft(self):
+        return self._left
+    
+    @AOILeft.setter
+    def AOILeft(self, value):
+        andor.set_int(self.handle, 'AOILeft', value)
+        self._left = value
+    
+    @attribute(dtype=int)
+    def AOIVBin(self):
+        return self._vbin
+    
+    @AOIVBin.setter
+    def AOIVBin(self, value):
+        andor.set_int(self.handle, 'AOIVBin', value)
+        self._vbin = value
+        self._height = andor.get_int(self.handle, 'AOIHeight')
+        
+    @attribute(dtype=int)
+    def AOIHeight(self):
+        return self._height
+    
+    @AOIHeight.setter
+    def AOIHeight(self, value):
+        andor.set_int(self.handle, 'AOIHeight', value)
+        self._height = value
+    
+    @attribute(dtype=int)
+    def AOITop(self):
+        return self._top
+    
+    @AOITop.setter
+    def AOITop(self, value):
+        andor.set_int(self.handle, 'AOITop', value)
+        self._top = value
     
     @attribute(dtype=bool)
     def SensorCooling(self):
@@ -294,7 +410,7 @@ class Andor3(Device):
         self._rotation = value
         
 def main():
-    '''
+    
     dev_info = tango.DbDevInfo()
     dev_info._class = 'Andor3'
     dev_info.server = 'Andor3/test'
@@ -302,6 +418,7 @@ def main():
 
     db = tango.Database()
     db.add_device(dev_info)
-    '''
+    
     Andor3.run_server()
     
+main()
