@@ -7,11 +7,8 @@ from tango import DevState
 from tango.server import Device, attribute, command, run, device_property
 import signal
 import os
-#from . import andor
-#from . import atutility
-
-import andor 
-import atutility
+from . import andor
+from . import atutility
 
 class Andor3(Device):
 
@@ -429,12 +426,12 @@ def main():
     
     dev_info = tango.DbDevInfo()
     dev_info._class = 'Andor3'
-    dev_info.server = 'Andor3/test'
-    dev_info.name = 'zyla/test/1'
+    dev_info.server = 'Andor3/b309a-e01'
+    dev_info.name = 'b309a-e01/dia/zyla'
 
     db = tango.Database()
     db.add_device(dev_info)
     
     Andor3.run_server()
     
-main()
+#main()
