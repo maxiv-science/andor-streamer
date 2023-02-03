@@ -5,13 +5,31 @@ import numpy as np
 from threading import Thread
 from tango import DevState
 from tango.server import Device, attribute, command, run, device_property
-#from . import andor 
+import signal
+import os
+#from . import andor
 #from . import atutility
 
 import andor 
 import atutility
 
 class Andor3(Device):
+
+    def __init__(self, *args, **kwargs):
+        self.context = zmq.Context()
+        self.pipe = self.context.socket(zmq.PAIR)
+        self.pipe.bind('inproc://zyla')
+        self.data_socket = self.context.socket(zmq.PUSH)
+        self.data_socket.bind(os.environ.get("DATA_SOCKET", 'tcp://*:9999'))
+        self._msg_number = 0
+
+        # this internally calls init_device
+        super().__init__(*args, **kwargs)
+
+        self.thread = Thread(target=self.main)
+        self.thread.start()
+
+
     def init_device(self):
         super().init_device()
         andor.sdk.AT_InitialiseLibrary()
@@ -22,15 +40,7 @@ class Andor3(Device):
         print('Found', devcount, ' devices')
         self._camera_model = andor.get_string(self.handle, 'CameraModel')
         print('CameraModel', self._camera_model)
-        
-        self.context = zmq.Context()
-        self.pipe = self.context.socket(zmq.PAIR)
-        self.pipe.bind('inproc://zyla')
-        self.data_socket = self.context.socket(zmq.PUSH)
-        self.data_socket.bind('tcp://*:9999')
-        self.monitor_socket = self.context.socket(zmq.REP)
-        self.monitor_socket.bind('tcp://*:9998')
-        
+
         self._filename = ''
         self._frame_count = 1
         self._acquired_frames = 0
@@ -61,21 +71,19 @@ class Andor3(Device):
         
         andor.set_enum_string(self.handle, 'CycleMode', 'Fixed')
         
-        image_size = andor.get_int(self.handle, 'ImageSizeBytes')
-        #print('ImageSizeBytes', image_size)
         self.buffers = []
-        for i in range(100):
-            buf = np.empty(image_size, np.uint8)
-            self.buffers.append(buf)
-            
-        self.thread = Thread(target=self.main)
-        self.thread.start()
+
+        self.register_signal(signal.SIGINT)
         self.set_state(DevState.ON)
     
     def delete_device(self):
         print('delete_device')
         self.context.destroy()
-    
+
+    def signal_handler(self, signo):
+        self.pipe.send(b'terminate')
+        self.thread.join(1)
+
     def update_state_and_status(self):
         if self._running == 0:
             state, status = DevState.ON, 'Idle'
@@ -129,12 +137,12 @@ class Andor3(Device):
         poller.register(fd_video, zmq.POLLIN)
         poller.register(pipe, zmq.POLLIN)
         poller.register(self.monitor_socket, zmq.POLLIN)
-        last_frame = zmq.Frame()
-        last_shape = [0, 0]
-        
+
         def finish():
             if self._running:
-                self.data_socket.send_json({'htype': 'series_end'})
+                self.data_socket.send_json({'htype': 'series_end',
+                                            'msg_number': self._msg_number})
+                self._msg_number += 1
             andor.sdk.AT_Command(self.handle, 'AcquisitionStop')
             andor.sdk.AT_Flush(self.handle)
             self._running = 0
@@ -155,8 +163,10 @@ class Andor3(Device):
                                   'frame': self._acquired_frames,
                                   'shape': img.shape,
                                   'type': 'uint16',
-                                  'compression': 'none'}, flags=zmq.SNDMORE)
+                                  'compression': 'none',
+                                  'msg_number': self._msg_number}, flags=zmq.SNDMORE)
                 self.data_socket.send(frame, copy=False)
+                self._msg_number += 1
                 self._acquired_frames += 1
                 if self._acquired_frames == self._frame_count:
                     finish()
@@ -167,20 +177,21 @@ class Andor3(Device):
                     print('start')
                     self._running = 1
                     self.data_socket.send_json({'htype': 'header',
-                                                'filename': self._filename})
+                                                'filename': self._filename,
+                                                'msg_number': self._msg_number}, flags=zmq.SNDMORE)
+                    self.data_socket.send_json({"cooling": self._sensor_cooling,
+                                                "hbin": self._hbin,
+                                                "vbin": self._vbin,
+                                                })
+                    self._msg_number += 1
                 elif msg == b'stop':
                     print('end')
                     finish()
-                    
-            if self.monitor_socket in events and events[self.monitor_socket] == zmq.POLLIN:
-                print(self.monitor_socket.recv())
-                self.monitor_socket.send_json({'htype': 'image',
-                                  'frame': self._acquired_frames,
-                                  'shape': last_shape,
-                                  'type': 'uint16',
-                                  'compression': 'none'}, flags=zmq.SNDMORE)
-                self.monitor_socket.send(last_frame, copy=False)
-                print('send monitoring frame')
+
+                elif msg == b'terminate':
+                    print('terminating network thread')
+                    finish()
+                    break
             
             
     @command
@@ -191,10 +202,15 @@ class Andor3(Device):
         print(self._height, self._width, self.stride, self.pixel_encoding)
         print('ReadoutTime', andor.get_float(self.handle, 'ReadoutTime'))
         print('ImageSizeBytes', andor.get_int(self.handle, 'ImageSizeBytes'))
+        image_size = andor.get_int(self.handle, 'ImageSizeBytes')
         self._acquired_frames = 0
-        self.pipe.send(b'start')
+        for i in range(100):
+            buf = np.empty(image_size, np.uint8)
+            self.buffers.append(buf)
+        andor.sdk.AT_Flush(self.handle)
         for buf in self.buffers:
-            andor.sdk.AT_QueueBuffer(self.handle, andor.ffi.from_buffer(buf), buf.nbytes)
+            andor.sdk.AT_QueueBuffer(self.handle, andor.ffi.from_buffer(buf), image_size)
+        self.pipe.send(b'start')
         andor.sdk.AT_Command(self.handle, 'AcquisitionStart')
         
     @command
@@ -261,7 +277,10 @@ class Andor3(Device):
     @SimplePreAmpGainControl.setter
     def SimplePreAmpGainControl(self, value):
         andor.set_enum_string(self.handle, 'SimplePreAmpGainControl', value)
-    
+        if "12-bit" in value:
+            andor.set_enum_string(self.handle, 'PixelEncoding', "Mono12Packed")
+
+
     @attribute(dtype=str)
     def SimplePreAmpGainControlOptions(self):
         return self._gain_control_options
@@ -307,7 +326,7 @@ class Andor3(Device):
     @attribute(dtype=str)
     def PixelEncoding(self):
         return andor.get_enum_string(self.handle, 'PixelEncoding')
-            
+
     @attribute(dtype=float)
     def SensorTemperature(self):
         return andor.get_float(self.handle, 'SensorTemperature')
