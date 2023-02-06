@@ -7,4 +7,4 @@ requires = [
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools_scm]
-write_to = "andor_streamer/_version.py"
+write_to = "dev_andor3/_version.py"

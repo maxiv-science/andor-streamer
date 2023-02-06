@@ -1,5 +1,5 @@
 package:
-  name: andor-streamer
+  name: dev-andor3
   version: "{{ SETUPTOOLS_SCM_PRETEND_VERSION }}"
 
 source:
@@ -9,7 +9,7 @@ build:
   noarch: python
   script: {{ PYTHON }} -m pip install . -vv
   entry_points:
-    - Andor3 = andor_streamer.Andor3:main
+    - Andor3 = dev_andor3.Andor3:main
 
 requirements:
   host:
