@@ -3,7 +3,7 @@ import zmq
 import tango
 import numpy as np
 from threading import Thread
-from tango import DevState
+from tango import DevState, AttrWriteType
 from tango.server import Device, attribute, command, run, device_property
 import signal
 import os
@@ -11,7 +11,25 @@ from libdaq import Client, Receiver
 from . import andor
 from . import atutility
 
+
+trigger_map = {"Internal": "INTERNAL", "External": "EXTERNAL_MULTI", "Software": "SOFTWARE"}
+
 class Andor3(Device):
+    receiver_host = device_property(dtype=str, mandatory=True)
+    receiver_port = device_property(dtype=int, mandatory=True)
+
+    SimplePreAmpGainControl = attribute(dtype=str,
+                                        access=AttrWriteType.READ_WRITE)
+    TriggerMode = attribute(dtype=str,
+                            access=AttrWriteType.READ_WRITE)
+    DestinationFilename = attribute(dtype=str,
+                                    access=AttrWriteType.READ_WRITE)
+
+    nTriggers = attribute(dtype=int,
+                          access=AttrWriteType.READ_WRITE)
+
+    FrameRate = attribute(dtype=float,
+                          access=AttrWriteType.READ_WRITE)
 
     def __init__(self, *args, **kwargs):
         self.context = zmq.Context()
@@ -61,7 +79,10 @@ class Andor3(Device):
         self._top = andor.get_int(self.handle, 'AOITop')
         
         atutility.sdk.AT_InitialiseUtilityLibrary()
-        
+
+        self._gain_control = andor.get_enum_string(self.handle, 'SimplePreAmpGainControl')
+        self.write_SimplePreAmpGainControl(self._gain_control)
+
         #print(andor.get_enum_string_options(self.handle, 'TemperatureControl'))
         
         options = andor.get_enum_string_options(self.handle, 'SimplePreAmpGainControl')
@@ -215,7 +236,15 @@ class Andor3(Device):
         if not self.receiver.wait_for_running(5.0):
             raise RuntimeError('No reply from streaming-receiver after Arm')
         andor.sdk.AT_Command(self.handle, 'AcquisitionStart')
-        
+
+    @command
+    def Live(self):
+        self.write_DestinationFilename('')
+        self.write_nTriggers(100000)
+        self.write_FrameRate(1)
+        self.write_TriggerMode('INTERNAL')
+        self.Arm()
+
     @command
     def SoftwareTrigger(self):
         andor.sdk.AT_Command(self.handle, 'SoftwareTrigger')
@@ -234,23 +263,19 @@ class Andor3(Device):
         return self._acquired_frames
 
     @attribute(dtype=int)
-    def read_nFramesReceived(self):
+    def nFramesReceived(self):
         return self.receiver.frames_received
 
-    @attribute(dtype=str)
-    def Filename(self):
+    def read_DestinationFilename(self):
         return self._filename
     
-    @Filename.setter
-    def Filename(self, value):
+    def write_DestinationFilename(self, value):
         self._filename = value
         
-    @attribute(dtype=int)
-    def nTriggers(self):
+    def read_nTriggers(self):
         return self._frame_count
     
-    @nTriggers.setter
-    def nTriggers(self, value):
+    def write_nTriggers(self, value):
         andor.sdk.AT_SetInt(self.handle, 'FrameCount', value)
         self._frame_count = value
         
@@ -276,13 +301,11 @@ class Andor3(Device):
         attr = 1 if value == True else 0
         andor.sdk.AT_SetBool(self.handle, 'Overlap', attr)
     
-    @attribute(dtype=str)
-    def SimplePreAmpGainControl(self):
+    def read_SimplePreAmpGainControl(self):
         ret = andor.get_enum_string(self.handle, 'SimplePreAmpGainControl')
         return ret
     
-    @SimplePreAmpGainControl.setter
-    def SimplePreAmpGainControl(self, value):
+    def write_SimplePreAmpGainControl(self, value):
         andor.set_enum_string(self.handle, 'SimplePreAmpGainControl', value)
         if "12-bit" in value:
             andor.set_enum_string(self.handle, 'PixelEncoding', "Mono12Packed")
@@ -292,21 +315,18 @@ class Andor3(Device):
     def SimplePreAmpGainControlOptions(self):
         return self._gain_control_options
         
-    @attribute(dtype=str)
-    def TriggerMode(self):
-        return self._trigger_mode
+    def read_TriggerMode(self):
+        return trigger_map[self._trigger_mode]
     
-    @TriggerMode.setter
-    def TriggerMode(self, value):
-        andor.set_enum_string(self.handle, 'TriggerMode', value)
-        self._trigger_mode = value
+    def write_TriggerMode(self, value):
+        val = {v:k for k,v in trigger_map.items()}[value]
+        andor.set_enum_string(self.handle, 'TriggerMode', val)
+        self._trigger_mode = val
        
-    @attribute(dtype=float)
-    def FrameRate(self):
+    def read_FrameRate(self):
         return andor.get_float(self.handle, 'FrameRate')
     
-    @FrameRate.setter
-    def FrameRate(self, value):
+    def write_FrameRate(self, value):
         ret = andor.sdk.AT_SetFloat(self.handle, 'FrameRate', value)
         if ret != 0:
             raise RuntimeError('Error setting FrameRate: %s' %andor.errors.get(ret, ''))
@@ -437,13 +457,13 @@ class Andor3(Device):
         
 def main():
     
-    dev_info = tango.DbDevInfo()
-    dev_info._class = 'Andor3'
-    dev_info.server = 'Andor3/b309a-e01'
-    dev_info.name = 'b309a-e01/dia/zyla'
+    #dev_info = tango.DbDevInfo()
+    #dev_info._class = 'Andor3'
+    #dev_info.server = 'Andor3/b309a-e01'
+    #dev_info.name = 'b309a-e01/dia/zyla'
 
-    db = tango.Database()
-    db.add_device(dev_info)
+    #db = tango.Database()
+    #db.add_device(dev_info)
     
     Andor3.run_server()
     
