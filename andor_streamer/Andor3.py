@@ -7,6 +7,7 @@ from tango import DevState
 from tango.server import Device, attribute, command, run, device_property
 import signal
 import os
+from libdaq import Client, Receiver
 from . import andor
 from . import atutility
 
@@ -70,6 +71,8 @@ class Andor3(Device):
         
         self.buffers = []
 
+        self.receiver = Receiver(self.context, self.receiver_host, self.receiver_port, 'streaming-receiver')
+
         self.register_signal(signal.SIGINT)
         self.set_state(DevState.ON)
     
@@ -82,12 +85,16 @@ class Andor3(Device):
         self.thread.join(1)
 
     def update_state_and_status(self):
-        if self._running == 0:
-            state, status = DevState.ON, 'Idle'
-        elif self._running == 1:
+        receiver_status = self.receiver.status()
+        if self._running == 1:
             state, status = DevState.RUNNING, 'Acquisition in progress'
+        elif receiver_status['state'] == 'running':
+            state, status = DevState.RUNNING, 'Waiting for streaming-receiver to finish'
+        elif receiver_status['state'] == 'error':
+            state, status = DevState.FAULT, 'Error from streaming-receiver: %s' % receiver_status['error']
         else:
-            state, status = DevState.ERROR, 'Error'
+            state, status = DevState.ON, 'Idle'
+
         self.set_state(state)
         self.set_status(status)
             
@@ -205,6 +212,8 @@ class Andor3(Device):
         for buf in self.buffers:
             andor.sdk.AT_QueueBuffer(self.handle, andor.ffi.from_buffer(buf), image_size)
         self.pipe.send(b'start')
+        if not self.receiver.wait_for_running(5.0):
+            raise RuntimeError('No reply from streaming-receiver after Arm')
         andor.sdk.AT_Command(self.handle, 'AcquisitionStart')
         
     @command
@@ -223,7 +232,11 @@ class Andor3(Device):
     @attribute(dtype=int)
     def nFramesAcquired(self):
         return self._acquired_frames
-        
+
+    @attribute(dtype=int)
+    def read_nFramesReceived(self):
+        return self.receiver.frames_received
+
     @attribute(dtype=str)
     def Filename(self):
         return self._filename
