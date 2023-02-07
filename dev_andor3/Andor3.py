@@ -356,6 +356,10 @@ class Andor3(Device):
         return andor.get_enum_string(self.handle, 'PixelEncoding')
 
     @attribute(dtype=float)
+    def ReadoutTime(self):
+        return andor.get_float(self.handle, 'ReadoutTime')
+
+    @attribute(dtype=float)
     def SensorTemperature(self):
         return andor.get_float(self.handle, 'SensorTemperature')
     
