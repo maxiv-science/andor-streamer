@@ -241,8 +241,8 @@ class Andor3(Device):
     def Live(self):
         self.write_DestinationFilename('')
         self.write_nTriggers(100000)
-        self.write_FrameRate(1)
         self.write_TriggerMode('INTERNAL')
+        self.write_FrameRate(1)
         self.Arm()
 
     @command
