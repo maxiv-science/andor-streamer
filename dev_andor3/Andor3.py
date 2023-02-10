@@ -226,6 +226,7 @@ class Andor3(Device):
         print('ImageSizeBytes', andor.get_int(self.handle, 'ImageSizeBytes'))
         image_size = andor.get_int(self.handle, 'ImageSizeBytes')
         self._acquired_frames = 0
+        self.buffers.clear()
         for i in range(100):
             buf = np.empty(image_size, np.uint8)
             self.buffers.append(buf)
