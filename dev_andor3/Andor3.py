@@ -35,12 +35,11 @@ class Andor3(Device):
         self.context = zmq.Context()
         self.pipe = self.context.socket(zmq.PAIR)
         self.pipe.bind('inproc://zyla')
-        self.data_socket = self.context.socket(zmq.PUSH)
-        self.data_socket.bind(os.environ.get("DATA_SOCKET", 'tcp://*:9999'))
-        self._msg_number = 0
 
         # this internally calls init_device
         super().__init__(*args, **kwargs)
+
+        self.register_signal(signal.SIGINT)
 
         self.thread = Thread(target=self.main)
         self.thread.start()
@@ -94,12 +93,13 @@ class Andor3(Device):
 
         self.receiver = Receiver(self.context, self.receiver_host, self.receiver_port, 'streaming-receiver')
 
-        self.register_signal(signal.SIGINT)
         self.set_state(DevState.ON)
     
     def delete_device(self):
         print('delete_device')
-        self.context.destroy()
+        andor.sdk.AT_Close(self.handle)
+        self.set_state(DevState.OFF)
+
 
     def signal_handler(self, signo):
         self.pipe.send(b'terminate')
@@ -157,6 +157,9 @@ class Andor3(Device):
     def main(self):
         pipe = self.context.socket(zmq.PAIR)
         pipe.connect('inproc://zyla')
+        self.data_socket = self.context.socket(zmq.PUSH)
+        self.data_socket.bind(os.environ.get("DATA_SOCKET", 'tcp://*:9999'))
+        self._msg_number = 0
         fd_video = os.open('/dev/video0', os.O_RDONLY)
         poller = zmq.Poller()
         poller.register(fd_video, zmq.POLLIN)
