@@ -1,16 +1,28 @@
 import os
 import zmq
 import tango
+import signal
 import numpy as np
+from functools import wraps
 from threading import Thread
 from tango import DevState, AttrWriteType
 from tango.server import Device, attribute, command, run, device_property
-import signal
-import os
 from libdaq import Client, Receiver
 from . import andor
 from . import atutility
 
+def handle_error(func):
+    @wraps(func)
+    def wrapper(self, *args, **kwargs):
+        try:
+            return func(self, *args, **kwargs)
+        except Exception as e:
+            msg = '%s failed: %s' %(func.__name__, e)
+            self._error_msg = msg
+            self.error_stream(msg)
+            raise e
+            
+    return wrapper
 
 trigger_map = {"Internal": "INTERNAL", "External": "EXTERNAL_MULTI", "Software": "SOFTWARE"}
 
@@ -59,10 +71,11 @@ class Andor3(Device):
         print('CameraModel', self._camera_model)
 
         self._filename = ''
+        self._error_msg = ''
         self._armed = False
         self._frame_count = 1
         self._acquired_frames = 0
-        # -1 is error, 0 is idle and 1 is running
+        # 0 is idle and 1 is running
         self._running = 0
         self._fliplr = False
         self._flipud = False
@@ -108,7 +121,13 @@ class Andor3(Device):
         self.pipe.send(b'terminate')
         self.thread.join(1)
 
+    @handle_error
     def update_state_and_status(self):
+        if self._error_msg:
+            self.set_state(DevState.FAULT)
+            self.set_status(self._error_msg)
+            return 
+        
         receiver_status = self.receiver.status()
         if self._running == 1:
             state, status = DevState.RUNNING, 'Acquisition in progress'
