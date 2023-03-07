@@ -17,6 +17,7 @@ trigger_map = {"Internal": "INTERNAL", "External": "EXTERNAL_MULTI", "Software":
 class Andor3(Device):
     receiver_host = device_property(dtype=str, mandatory=True)
     receiver_port = device_property(dtype=int, mandatory=True)
+    k8s_namespace = device_property(dtype=str)
 
     SimplePreAmpGainControl = attribute(dtype=str,
                                         access=AttrWriteType.READ_WRITE)
@@ -47,6 +48,7 @@ class Andor3(Device):
 
     def init_device(self):
         super().init_device()
+        
         andor.sdk.AT_InitialiseLibrary()
         devcount = andor.get_int(andor.AT_HANDLE_SYSTEM, 'DeviceCount')
         handle = andor.ffi.new('AT_H*')
@@ -57,6 +59,7 @@ class Andor3(Device):
         print('CameraModel', self._camera_model)
 
         self._filename = ''
+        self._armed = False
         self._frame_count = 1
         self._acquired_frames = 0
         # -1 is error, 0 is idle and 1 is running
@@ -109,10 +112,17 @@ class Andor3(Device):
         receiver_status = self.receiver.status()
         if self._running == 1:
             state, status = DevState.RUNNING, 'Acquisition in progress'
-        elif receiver_status['state'] == 'running':
-            state, status = DevState.RUNNING, 'Waiting for streaming-receiver to finish'
+            
         elif receiver_status['state'] == 'error':
             state, status = DevState.FAULT, 'Error from streaming-receiver: %s' % receiver_status['error']
+            
+        elif self._armed:
+            if receiver_status['state'] == 'running':
+                state, status = DevState.RUNNING, 'Waiting for streaming-receiver to finish'
+            else:
+                self._armed = False
+                state, status = DevState.ON, 'Idle'
+                
         else:
             state, status = DevState.ON, 'Idle'
 
@@ -240,6 +250,7 @@ class Andor3(Device):
         if not self.receiver.wait_for_running(5.0):
             raise RuntimeError('No reply from streaming-receiver after Arm')
         andor.sdk.AT_Command(self.handle, 'AcquisitionStart')
+        self._armed = True
 
     @command
     def Live(self):
@@ -257,6 +268,11 @@ class Andor3(Device):
     def Stop(self):
         print('stop')
         self.pipe.send(b'stop')
+        
+    @command
+    def RestartReceiver(self):
+        if self.k8s_namespace:
+            self.receiver.restart(self.k8s_namespace)
         
     @attribute(dtype=str)
     def CameraModel(self):
