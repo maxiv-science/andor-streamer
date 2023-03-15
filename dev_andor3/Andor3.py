@@ -44,6 +44,9 @@ class Andor3(Device):
     FrameRate = attribute(dtype=float,
                           access=AttrWriteType.READ_WRITE)
 
+    ScanConfig = attribute(dtype=str,
+                          access=AttrWriteType.READ_WRITE)
+
     def __init__(self, *args, **kwargs):
         self.context = zmq.Context()
         self.pipe = self.context.socket(zmq.PAIR)
@@ -80,6 +83,7 @@ class Andor3(Device):
         self._fliplr = False
         self._flipud = False
         self._rotation = 0
+        self._scan_config = None
         
         self._exposure_time = andor.get_float(self.handle, 'ExposureTime')
         self._trigger_mode = andor.get_enum_string(self.handle, 'TriggerMode')
@@ -92,7 +96,11 @@ class Andor3(Device):
         self._vbin = andor.get_int(self.handle, 'AOIVBin')
         self._height = andor.get_int(self.handle, 'AOIHeight')
         self._top = andor.get_int(self.handle, 'AOITop')
-        
+
+        self._target_temperature = None
+        if andor.is_implemented("TargetSensorTemperature"):
+            self._target_temperature = andor.get_float(self.handle, 'TargetSensorTemperature')
+
         atutility.sdk.AT_InitialiseUtilityLibrary()
 
         self._gain_control = andor.get_enum_string(self.handle, 'SimplePreAmpGainControl')
@@ -236,6 +244,8 @@ class Andor3(Device):
                     self.data_socket.send_json({"cooling": self._sensor_cooling,
                                                 "hbin": self._hbin,
                                                 "vbin": self._vbin,
+                                                "scan": self._scan_config,
+                                                #"scan": [{"scanvar": i, "nTriggers": 10} for i in np.linspace(-10e-9, 10e-9, 100)]
                                                 })
                     self._msg_number += 1
                 elif msg == b'stop':
@@ -310,6 +320,12 @@ class Andor3(Device):
     
     def write_DestinationFilename(self, value):
         self._filename = value
+
+    def read_ScanConfig(self):
+        return self._scan_config
+
+    def write_ScanConfig(self, value):
+        self._scan_config = value
         
     def read_nTriggers(self):
         return self._frame_count
@@ -379,6 +395,16 @@ class Andor3(Device):
     def ElectronicShutteringMode(self, value):
         andor.set_enum_string(self.handle, 'ElectronicShutteringMode', value)
         self._shutter_mode = value
+
+    @attribute(dtype=str)
+    def TargetSensorTemperature(self):
+        return self._target_temperature
+
+    @ElectronicShutteringMode.setter
+    def TargetSensorTemperature(self, value):
+        if self._target_temperature is not None:
+            andor.set_float(self.handle, 'TargetSensorTemperature', value)
+            self._target_temperature = value
         
     @attribute(dtype=str)
     def PixelReadoutRate(self):

@@ -100,6 +100,9 @@ def get_float(handle, command):
     check_error(sdk.AT_GetFloat(handle, command, result))
     return result[0]
 
+def set_float(handle, command, value):
+    check_error(sdk.AT_SetFloat(handle, command, value))
+
 def get_bool(handle, command):
     result = ffi.new('AT_BOOL*')
     check_error(sdk.AT_GetBool(handle, command, result))
