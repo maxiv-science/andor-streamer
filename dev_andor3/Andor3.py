@@ -27,8 +27,7 @@ def handle_error(func):
 trigger_map = {"Internal": "INTERNAL", "External": "EXTERNAL_MULTI", "Software": "SOFTWARE"}
 
 class Andor3(Device):
-    receiver_host = device_property(dtype=str, mandatory=True)
-    receiver_port = device_property(dtype=int, mandatory=True)
+    receiver_url = device_property(dtype=str, mandatory=True)
     k8s_namespace = device_property(dtype=str)
 
     SimplePreAmpGainControl = attribute(dtype=str,
@@ -111,7 +110,7 @@ class Andor3(Device):
         
         self.buffers = []
 
-        self.receiver = Receiver(self.context, self.receiver_host, self.receiver_port, 'streaming-receiver')
+        self.receiver = Receiver(self.receiver_url)
 
         self.set_state(DevState.ON)
     
