@@ -93,7 +93,7 @@ class Andor3(Device):
         self._top = andor.get_int(self.handle, 'AOITop')
 
         self._target_temperature = None
-        if andor.is_implemented("TargetSensorTemperature"):
+        if andor.is_implemented(self.handle, "TargetSensorTemperature"):
             self._target_temperature = andor.get_float(self.handle, 'TargetSensorTemperature')
 
         atutility.sdk.AT_InitialiseUtilityLibrary()
