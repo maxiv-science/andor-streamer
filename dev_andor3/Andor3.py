@@ -28,6 +28,7 @@ trigger_map = {"Internal": "INTERNAL", "External": "EXTERNAL_MULTI", "Software":
 
 class Andor3(Device):
     receiver_url = device_property(dtype=str, mandatory=True)
+    data_port = device_property(dtype=int, default_value=9999)
     k8s_namespace = device_property(dtype=str)
 
     SimplePreAmpGainControl = attribute(dtype=str,
@@ -190,7 +191,7 @@ class Andor3(Device):
         pipe = self.context.socket(zmq.PAIR)
         pipe.connect('inproc://zyla')
         self.data_socket = self.context.socket(zmq.PUSH)
-        self.data_socket.bind(os.environ.get("DATA_SOCKET", 'tcp://*:9999'))
+        self.data_socket.bind(os.environ.get("DATA_SOCKET", f'tcp://*:{self.data_port}'))
         self._msg_number = 0
         fd_video = os.open('/dev/video0', os.O_RDONLY)
         poller = zmq.Poller()
