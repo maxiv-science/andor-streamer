@@ -86,10 +86,8 @@ class Andor3(Device):
         self._shutter_mode = andor.get_enum_string(self.handle, 'ElectronicShutteringMode')
         self._pixel_readout_rate = andor.get_enum_string(self.handle, 'PixelReadoutRate')
         self._sensor_cooling = andor.get_bool(self.handle, 'SensorCooling')
-        self._hbin = andor.get_int(self.handle, 'AOIHBin')
         self._width = andor.get_int(self.handle, 'AOIWidth')
         self._left = andor.get_int(self.handle, 'AOILeft')
-        self._vbin = andor.get_int(self.handle, 'AOIVBin')
         self._height = andor.get_int(self.handle, 'AOIHeight')
         self._top = andor.get_int(self.handle, 'AOITop')
 
@@ -238,8 +236,6 @@ class Andor3(Device):
                                                 'filename': self._filename,
                                                 'msg_number': self._msg_number}, flags=zmq.SNDMORE)
                     self.data_socket.send_json({"cooling": self._sensor_cooling,
-                                                "hbin": self._hbin,
-                                                "vbin": self._vbin,
                                                 })
                     self._msg_number += 1
                 elif msg == b'stop':
@@ -417,16 +413,6 @@ class Andor3(Device):
     
     
     # ROI attributes
-    
-    @attribute(dtype=int)
-    def AOIHBin(self):
-        return self._hbin
-    
-    @AOIHBin.setter
-    def AOIHBin(self, value):
-        andor.set_int(self.handle, 'AOIHBin', value)
-        self._hbin = value
-        self._width = andor.get_int(self.handle, 'AOIWidth')
         
     @attribute(dtype=int)
     def AOIWidth(self):
@@ -445,16 +431,6 @@ class Andor3(Device):
     def AOILeft(self, value):
         andor.set_int(self.handle, 'AOILeft', value)
         self._left = value
-    
-    @attribute(dtype=int)
-    def AOIVBin(self):
-        return self._vbin
-    
-    @AOIVBin.setter
-    def AOIVBin(self, value):
-        andor.set_int(self.handle, 'AOIVBin', value)
-        self._vbin = value
-        self._height = andor.get_int(self.handle, 'AOIHeight')
         
     @attribute(dtype=int)
     def AOIHeight(self):
