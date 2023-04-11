@@ -280,6 +280,13 @@ class Andor3(Device):
         self.Arm()
 
     @command
+    def Continuous(self):
+        self.write_DestinationFilename('')
+        self.write_nTriggers(100000)
+        self.write_TriggerMode('EXTERNAL_MULTI')
+        self.Arm()
+
+    @command
     def SoftwareTrigger(self):
         andor.sdk.AT_Command(self.handle, 'SoftwareTrigger')
         

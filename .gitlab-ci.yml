@@ -1,3 +1,6 @@
 include:
   - project: 'kits-maxiv/cfg-maxiv-gitlabci'
-    file: '/CondaBuild.gitlab-ci.yml'
+    file: '/.python-ci.yml'
+
+variables:
+  RPM_ENABLED: "false"
