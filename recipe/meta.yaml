@@ -18,7 +18,7 @@ requirements:
     - setuptools-scm
   run:
     - python
-    - libdaq >= 1.3.2
+    - libdaq >=1.3.2
     - cffi
     - numpy
     - pytango
