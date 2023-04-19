@@ -166,5 +166,6 @@ def wait_buffer(handle, timeout=0):
     if ret == AT_SUCCESS:
         return (buf_ptr[0], buffer_size[0])
     else:
-        print('wait_buffer error', ret)
+        if ret != 13:
+            print('wait_buffer error', ret)
         return None
