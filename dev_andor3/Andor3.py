@@ -208,24 +208,22 @@ class Andor3(Device):
         while True:
             events = dict(poller.poll())
             if fd_video in events and events[fd_video] == zmq.POLLIN:
-                ret = andor.wait_buffer(self.handle, 0)
-                if ret is None:
-                    continue
-                buf, size = ret
-                #print('frame', self._acquired_frames)
-                img = self.handle_image(buf, size)
-                frame = zmq.Frame(img, copy=False)
-                self.data_socket.send_json({'htype': 'image',
-                                  'frame': self._acquired_frames,
-                                  'shape': img.shape,
-                                  'type': 'uint16',
-                                  'compression': 'none',
-                                  'msg_number': self._msg_number}, flags=zmq.SNDMORE)
-                self.data_socket.send(frame, copy=False)
-                self._msg_number += 1
-                self._acquired_frames += 1
-                if self._acquired_frames == self._frame_count:
-                    finish()
+                while ret := andor.wait_buffer(self.handle, 0):
+                    buf, size = ret
+                    #print('frame', self._acquired_frames)
+                    img = self.handle_image(buf, size)
+                    frame = zmq.Frame(img, copy=False)
+                    self.data_socket.send_json({'htype': 'image',
+                                      'frame': self._acquired_frames,
+                                      'shape': img.shape,
+                                      'type': 'uint16',
+                                      'compression': 'none',
+                                      'msg_number': self._msg_number}, flags=zmq.SNDMORE)
+                    self.data_socket.send(frame, copy=False)
+                    self._msg_number += 1
+                    self._acquired_frames += 1
+                    if self._acquired_frames == self._frame_count:
+                        finish()
                 
             if pipe in events and events[pipe] == zmq.POLLIN:
                 msg = pipe.recv()
