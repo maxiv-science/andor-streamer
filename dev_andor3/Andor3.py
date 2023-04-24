@@ -389,7 +389,7 @@ class Andor3(Device):
     def TargetSensorTemperature(self):
         return self._target_temperature
 
-    @ElectronicShutteringMode.setter
+    @TargetSensorTemperature.setter
     def TargetSensorTemperature(self, value):
         if self._target_temperature is not None:
             andor.set_float(self.handle, 'TargetSensorTemperature', value)
