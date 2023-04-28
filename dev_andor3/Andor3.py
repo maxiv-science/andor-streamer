@@ -385,7 +385,7 @@ class Andor3(Device):
         andor.set_enum_string(self.handle, 'ElectronicShutteringMode', value)
         self._shutter_mode = value
 
-    @attribute(dtype=str)
+    @attribute(dtype=float)
     def TargetSensorTemperature(self):
         return self._target_temperature
 
@@ -504,5 +504,6 @@ def main():
     #db.add_device(dev_info)
     
     Andor3.run_server()
-    
-#main()
+
+if __name__ == "__main__":
+    main()
