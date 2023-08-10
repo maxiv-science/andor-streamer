@@ -3,6 +3,7 @@ import zmq
 import tango
 import signal
 import numpy as np
+import logging
 from functools import wraps
 from threading import Thread
 from tango import DevState, AttrWriteType
@@ -10,6 +11,10 @@ from tango.server import Device, attribute, command, run, device_property
 from libdaq import Client, Receiver
 from . import andor
 from . import atutility
+
+logging.basicConfig()
+
+logger = logging.getLogger(__name__)
 
 def handle_error(func):
     @wraps(func)
@@ -66,9 +71,9 @@ class Andor3(Device):
         handle = andor.ffi.new('AT_H*')
         andor.sdk.AT_Open(0, handle)
         self.handle = handle[0]
-        print('Found', devcount, ' devices')
+        logger.info('Found %d devices')
         self._camera_model = andor.get_string(self.handle, 'CameraModel')
-        print('CameraModel', self._camera_model)
+        logger.info('CameraModel %s', self._camera_model)
 
         self._filename = ''
         self._error_msg = ''
@@ -114,7 +119,7 @@ class Andor3(Device):
         self.set_state(DevState.ON)
     
     def delete_device(self):
-        print('delete_device')
+        logger.info('delete_device')
         andor.sdk.AT_Close(self.handle)
         self.set_state(DevState.OFF)
 
@@ -228,7 +233,7 @@ class Andor3(Device):
             if pipe in events and events[pipe] == zmq.POLLIN:
                 msg = pipe.recv()
                 if msg == b'start':
-                    print('start')
+                    logger.debug('start acquisition')
                     self._running = 1
                     self.data_socket.send_json({'htype': 'header',
                                                 'filename': self._filename,
@@ -237,23 +242,23 @@ class Andor3(Device):
                                                 })
                     self._msg_number += 1
                 elif msg == b'stop':
-                    print('end')
+                    logger.debug('end acquisition')
                     finish()
 
                 elif msg == b'terminate':
-                    print('terminating network thread')
+                    logger.debug('terminating network thread')
                     finish()
                     break
             
             
     @command
     def Arm(self):
-        print('start', self._frame_count)
+        logger.info('start nTriggers %d', self._frame_count)
         self.stride = andor.get_int(self.handle, 'AOIStride')
         self.pixel_encoding = andor.get_enum_string(self.handle, 'PixelEncoding')
-        print(self._height, self._width, self.stride, self.pixel_encoding)
-        print('ReadoutTime', andor.get_float(self.handle, 'ReadoutTime'))
-        print('ImageSizeBytes', andor.get_int(self.handle, 'ImageSizeBytes'))
+        logger.debug("height %d, width %d, stride %d, encoding %s", self._height, self._width, self.stride, self.pixel_encoding)
+        logger.info('ReadoutTime %f', andor.get_float(self.handle, 'ReadoutTime'))
+        logger.debug('ImageSizeBytes %d', andor.get_int(self.handle, 'ImageSizeBytes'))
         image_size = andor.get_int(self.handle, 'ImageSizeBytes')
         self._acquired_frames = 0
         self.buffers.clear()
@@ -290,7 +295,6 @@ class Andor3(Device):
         
     @command
     def Stop(self):
-        print('stop')
         self.pipe.send(b'stop')
         
     @command
