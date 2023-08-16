@@ -281,6 +281,8 @@ class Andor3(Device):
         self.write_DestinationFilename('')
         self.write_nTriggers(100000)
         self.write_TriggerMode('INTERNAL')
+        if self._exposure_time > 1-0.01:
+            self.ExposureTime = 0.99
         self.write_FrameRate(1)
         self.Arm()
 
