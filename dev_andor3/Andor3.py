@@ -76,6 +76,9 @@ class Andor3(Device):
         logger.info('CameraModel %s', self._camera_model)
         if "SIMCAM" in self._camera_model:
             logger.error("only simcam found. make sure to have camera connected and on.")
+            self._error_msg = "only simcam found. make sure to have camera connected and on."
+            self.set_state(DevState.FAULT)
+            return
 
         self._filename = ''
         self._error_msg = ''
