@@ -49,6 +49,16 @@ class Andor3(Device):
     FrameRate = attribute(dtype=float,
                           access=AttrWriteType.READ_WRITE)
 
+    ExposureTime = attribute(dtype=float,
+                          access=AttrWriteType.READ_WRITE)
+
+    ElectronicShutteringMode = attribute(dtype=str,
+                             access=AttrWriteType.READ_WRITE)
+
+    PresetExposureTime = device_property(dtype=float)
+
+    PresetElectronicShutteringMode = device_property(dtype=str)
+
     def __init__(self, *args, **kwargs):
         self.context = zmq.Context()
         self.pipe = self.context.socket(zmq.PAIR)
@@ -92,8 +102,14 @@ class Andor3(Device):
         self._rotation = 0
 
         self._exposure_time = andor.get_float(self.handle, 'ExposureTime')
+        if self.PresetExposureTime:
+            print("setting PresetExposureTime", self.PresetExposureTime)
+            self.write_ExposureTime(self.PresetExposureTime)
         self._trigger_mode = andor.get_enum_string(self.handle, 'TriggerMode')
         self._shutter_mode = andor.get_enum_string(self.handle, 'ElectronicShutteringMode')
+        if self.PresetElectronicShutteringMode:
+            print("setting PresetElectronicShutteringMode", self.PresetElectronicShutteringMode)
+            self.write_ElectronicShutteringMode(self.PresetElectronicShutteringMode)
         self._pixel_readout_rate = andor.get_enum_string(self.handle, 'PixelReadoutRate')
         self._sensor_cooling = andor.get_bool(self.handle, 'SensorCooling')
         self._width = andor.get_int(self.handle, 'AOIWidth')
@@ -285,7 +301,7 @@ class Andor3(Device):
         self.write_nTriggers(100000)
         self.write_TriggerMode('INTERNAL')
         if self._exposure_time > 1-0.01:
-            self.ExposureTime = 0.99
+            self.write_ExposureTime(0.99)
         self.write_FrameRate(1)
         self.Arm()
 
@@ -333,13 +349,11 @@ class Andor3(Device):
     def write_nTriggers(self, value):
         andor.sdk.AT_SetInt(self.handle, 'FrameCount', value)
         self._frame_count = value
-        
-    @attribute(dtype=float)
-    def ExposureTime(self):
+
+    def read_ExposureTime(self):
         return self._exposure_time
     
-    @ExposureTime.setter
-    def ExposureTime(self, value):
+    def write_ExposureTime(self, value):
         ret = andor.sdk.AT_SetFloat(self.handle, 'ExposureTime', value)
         if ret != 0:
             raise RuntimeError('Error setting exposure time: %s' %andor.errors.get(ret, ''))
@@ -387,12 +401,10 @@ class Andor3(Device):
             raise RuntimeError('Error setting FrameRate: %s' %andor.errors.get(ret, ''))
         #self._frame_rate = andor.get_float(self.handle, 'FrameRate')
         
-    @attribute(dtype=str)
-    def ElectronicShutteringMode(self):
+    def read_ElectronicShutteringMode(self):
         return self._shutter_mode
         
-    @ElectronicShutteringMode.setter
-    def ElectronicShutteringMode(self, value):
+    def write_ElectronicShutteringMode(self, value):
         andor.set_enum_string(self.handle, 'ElectronicShutteringMode', value)
         self._shutter_mode = value
 
