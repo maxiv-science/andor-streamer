@@ -300,9 +300,8 @@ class Andor3(Device):
         self.write_DestinationFilename('')
         self.write_nTriggers(100000)
         self.write_TriggerMode('INTERNAL')
-        if self._exposure_time > 1-0.01:
-            self.write_ExposureTime(0.99)
-        self.write_FrameRate(1)
+        maxfr = andor.get_float_max(self.handle, 'FrameRate')
+        self.write_FrameRate(min(maxfr, 1))
         self.Arm()
 
     @command
