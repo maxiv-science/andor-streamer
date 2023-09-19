@@ -59,6 +59,8 @@ class Andor3(Device):
 
     PresetElectronicShutteringMode = device_property(dtype=str)
 
+    PresetSimplePreAmpGainControl = device_property(dtype=str)
+
     def __init__(self, *args, **kwargs):
         self.context = zmq.Context()
         self.pipe = self.context.socket(zmq.PAIR)
@@ -123,6 +125,9 @@ class Andor3(Device):
 
         atutility.sdk.AT_InitialiseUtilityLibrary()
 
+        if self.PresetSimplePreAmpGainControl:
+            print("setting PresetSimplePreAmpGainControl", self.PresetSimplePreAmpGainControl)
+            self.write_SimplePreAmpGainControl(self.PresetSimplePreAmpGainControl)
         self._gain_control = andor.get_enum_string(self.handle, 'SimplePreAmpGainControl')
         self.write_SimplePreAmpGainControl(self._gain_control)
 
