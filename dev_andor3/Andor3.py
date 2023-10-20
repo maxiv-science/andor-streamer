@@ -1,5 +1,6 @@
 import os
 import zmq
+import json
 import tango
 import signal
 import numpy as np
@@ -54,7 +55,7 @@ class Andor3(Device):
 
     ElectronicShutteringMode = attribute(dtype=str,
                              access=AttrWriteType.READ_WRITE)
-
+    
     PresetExposureTime = device_property(dtype=float)
 
     PresetElectronicShutteringMode = device_property(dtype=str)
@@ -93,6 +94,8 @@ class Andor3(Device):
             return
 
         self._filename = ''
+        self._label = ''
+        self._nproj = 1
         self._error_msg = ''
         self._armed = False
         self._frame_count = 1
@@ -264,8 +267,12 @@ class Andor3(Device):
                     self.data_socket.send_json({'htype': 'header',
                                                 'filename': self._filename,
                                                 'msg_number': self._msg_number}, flags=zmq.SNDMORE)
-                    self.data_socket.send_json({"cooling": self._sensor_cooling,
-                                                })
+                    
+                    meta = {'cooling': self._sensor_cooling,
+                            'label': self._label,
+                            'nproj': self._nproj
+                    }
+                    self.data_socket.send_json(meta)
                     self._msg_number += 1
                 elif msg == b'stop':
                     logger.debug('end acquisition')
@@ -443,6 +450,23 @@ class Andor3(Device):
     def SensorTemperature(self):
         return andor.get_float(self.handle, 'SensorTemperature')
     
+    
+    # Attributes for the realtime tomo pipeline
+    @attribute(dtype=str)
+    def Label(self):
+        return self._label
+    
+    @Label.setter
+    def Label(self, value):
+        self._label = value
+    
+    @attribute(dtype=int)
+    def Nproj(self):
+        return self._nproj
+    
+    @Nproj.setter
+    def Nproj(self, value):
+        self._nproj = value
     
     # ROI attributes
         
