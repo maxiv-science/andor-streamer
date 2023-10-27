@@ -96,6 +96,7 @@ class Andor3(Device):
         self._filename = ''
         self._label = ''
         self._nproj = 1
+        self._save_raw = True
         self._error_msg = ''
         self._armed = False
         self._frame_count = 1
@@ -270,7 +271,8 @@ class Andor3(Device):
                     
                     meta = {'cooling': self._sensor_cooling,
                             'label': self._label,
-                            'nproj': self._nproj
+                            'nproj': self._nproj,
+                            'save_raw': self._save_raw
                     }
                     self.data_socket.send_json(meta)
                     self._msg_number += 1
@@ -467,6 +469,16 @@ class Andor3(Device):
     @Nproj.setter
     def Nproj(self, value):
         self._nproj = value
+
+    # Attributes for the data reduction pipeline
+
+    @attribute(dtype=bool)
+    def SaveRaw(self):
+        return self._save_raw
+
+    @SaveRaw.setter
+    def SaveRaw(self, value):
+        self._save_raw = value
     
     # ROI attributes
         
