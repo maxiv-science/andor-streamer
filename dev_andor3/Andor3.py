@@ -36,6 +36,7 @@ class Andor3(Device):
     receiver_url = device_property(dtype=str, mandatory=True)
     data_port = device_property(dtype=int, default_value=9999)
     k8s_namespace = device_property(dtype=str)
+    serial_number = device_property(dtype=str, default_value="")
 
     SimplePreAmpGainControl = attribute(dtype=str,
                                         access=AttrWriteType.READ_WRITE)
@@ -81,12 +82,28 @@ class Andor3(Device):
         
         andor.sdk.AT_InitialiseLibrary()
         devcount = andor.get_int(andor.AT_HANDLE_SYSTEM, 'DeviceCount')
+        print('Found %d devices', devcount)
+        i = 0
+        if self.serial_number != "":
+            snmap = {}
+            for i in range(devcount):
+                handle = andor.ffi.new('AT_H*')
+                andor.sdk.AT_Open(i, handle)
+                camera_model = andor.get_string(handle[0], 'CameraModel')
+                camera_serial = andor.get_string(handle[0], 'SerialNumber')
+                print('CameraModel %s: serial: %s', camera_model, camera_serial)
+                andor.sdk.AT_Close(handle[0])
+                snmap[camera_serial] = i
+            i = snmap[self.serial_number]
+
+
         handle = andor.ffi.new('AT_H*')
-        andor.sdk.AT_Open(0, handle)
+        andor.sdk.AT_Open(i, handle)
         self.handle = handle[0]
-        logger.info('Found %d devices')
         self._camera_model = andor.get_string(self.handle, 'CameraModel')
-        logger.info('CameraModel %s', self._camera_model)
+        self._camera_serial = andor.get_string(handle[0], 'SerialNumber')
+
+        print("using serial number", self._camera_serial)
         if "SIMCAM" in self._camera_model:
             logger.error("only simcam found. make sure to have camera connected and on.")
             self._error_msg = "only simcam found. make sure to have camera connected and on."
