@@ -110,6 +110,50 @@ class Andor3(Device):
             self.set_state(DevState.FAULT)
             return
 
+        # find correct dev/video number
+        import glob
+        vdevs = glob.glob("/dev/video*")
+        print("video devices", vdevs)
+
+        fdmap = {}
+        poller = zmq.Poller()
+        for vdev in vdevs:
+            fd_video = os.open(vdev, os.O_RDONLY)
+            fdmap[fd_video] = vdev
+            poller.register(fd_video, zmq.POLLIN)
+
+        self.buffers = []
+
+        image_size = andor.get_int(self.handle, 'ImageSizeBytes')
+        self.buffers.clear()
+        for i in range(100):
+            buf = np.empty(image_size, np.uint8)
+            self.buffers.append(buf)
+        andor.sdk.AT_Flush(self.handle)
+        for buf in self.buffers:
+            andor.sdk.AT_QueueBuffer(self.handle, andor.ffi.from_buffer(buf), image_size)
+        andor.sdk.AT_Command(self.handle, 'AcquisitionStart')
+
+        polled = dict(poller.poll())
+        print("polled data: ", polled)
+        print("map", fdmap)
+
+        polledfds = list(polled.keys())
+        if len(polledfds) != 1:
+            self.set_state(DevState.FAULT)
+            self.set_status("no corresponding video device found")
+            return
+
+        self.videodevice = fdmap[polledfds[0]]
+        print("using video device", self.videodevice)
+
+        andor.sdk.AT_Command(self.handle, 'AcquisitionStop')
+        andor.sdk.AT_Flush(self.handle)
+
+        for fd in fdmap:
+            poller.unregister(fd)
+            os.close(fd)
+
         self._filename = ''
         self._label = ''
         self._nproj = 1
@@ -243,7 +287,7 @@ class Andor3(Device):
         self.data_socket = self.context.socket(zmq.PUSH)
         self.data_socket.bind(os.environ.get("DATA_SOCKET", f'tcp://*:{self.data_port}'))
         self._msg_number = 0
-        fd_video = os.open('/dev/video0', os.O_RDONLY)
+        fd_video = os.open(self.videodevice, os.O_RDONLY)
         poller = zmq.Poller()
         poller.register(fd_video, zmq.POLLIN)
         poller.register(pipe, zmq.POLLIN)
